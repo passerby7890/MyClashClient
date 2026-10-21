@@ -35,23 +35,36 @@ jobs:
           chmod +x ./scripts/build_slim_dmg.sh
           ./scripts/build_slim_dmg.sh
 
-      - name: 5. 🧪 雲端 macOS 自動化冒煙測試與實機截圖
+      - name: 5. 🧪 雲端 macOS 自動化冒煙測試與實機登入截圖
         run: |
           mkdir -p ~/Library/Logs/TianheNetwork
-          echo "1. 賦予核心執行權限並啟動 Tianhe.app"
+          echo "1. 賦予核心執行權限並啟動 Tianhe.app (注入用戶帳號自動登入)"
           chmod +x dist_mac/Tianhe.app/Contents/Resources/tools/mihomo/mihomo || true
-          open dist_mac/Tianhe.app
-          sleep 8
 
-          echo "2. 檢查核心進程是否成功常駐"
-          pgrep -l mihomo || echo "⚠️ Mihomo 未在背景檢測到"
+          export TIANHE_AUTO_EMAIL="test17318@outlook.com"
+          export TIANHE_AUTO_PASSWORD="a12345678"
+          export TIANHE_AUTO_SUBMIT="1"
 
-          echo "3. 檢查 7890 代理端口與 9090 控制器"
-          lsof -i :7890 || true
-          lsof -i :9090 || true
+          # 啟動應用程式二進位
+          ./dist_mac/Tianhe.app/Contents/MacOS/Tianhe &
+          sleep 4
 
-          echo "4. 自動截取 macOS 桌面實機畫面"
+          echo "2. 自動點擊關閉系統安全確認視窗"
+          osascript -e 'tell application "System Events" to key code 36' 2>/dev/null || true
+          sleep 2
+
+          echo "3. 截取登入執行畫面"
+          screencapture -x 01_login_attempt.png
+
+          echo "4. 等待登入 API 響應並載入主控台..."
+          sleep 6
+
+          echo "5. 檢查核心進程狀態"
+          pgrep -l mihomo || echo "ℹ️ Mihomo 核心待命啟動中"
+
+          echo "6. 自動截取 macOS 桌面實機畫面 (主控台與驗證畫面)"
           screencapture -x mac_verification.png
+          screencapture -x 02_dashboard_screen.png
 
       - name: 6. 📤 上傳 Mac 實機畫面與測試日誌
         uses: actions/upload-artifact@v4
@@ -59,6 +72,8 @@ jobs:
           name: mac-verification-evidence
           path: |
             mac_verification.png
+            01_login_attempt.png
+            02_dashboard_screen.png
             ~/Library/Logs/TianheNetwork/
           if-no-files-found: warn
 

@@ -104,6 +104,7 @@ rm -rf "$DMG_TEMP_DIR"
 mkdir -p "$DMG_TEMP_DIR"
 
 cp -R "$APP_BUNDLE" "$DMG_TEMP_DIR/"
+cp -R "$APP_BUNDLE" "$DIST_DIR/"
 ln -s /Applications "$DMG_TEMP_DIR/Applications"
 
 # 透過 hdiutil 建立壓縮型 DMG

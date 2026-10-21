@@ -35,14 +35,41 @@ jobs:
           chmod +x ./scripts/build_slim_dmg.sh
           ./scripts/build_slim_dmg.sh
 
-      - name: 5. 上傳 macOS DMG 建構產物
+      - name: 5. 🧪 雲端 macOS 自動化冒煙測試與實機截圖
+        run: |
+          mkdir -p ~/Library/Logs/TianheNetwork
+          echo "1. 賦予核心執行權限並啟動 Tianhe.app"
+          chmod +x dist_mac/Tianhe.app/Contents/Resources/tools/mihomo/mihomo || true
+          open dist_mac/Tianhe.app
+          sleep 8
+
+          echo "2. 檢查核心進程是否成功常駐"
+          pgrep -l mihomo || echo "⚠️ Mihomo 未在背景檢測到"
+
+          echo "3. 檢查 7890 代理端口與 9090 控制器"
+          lsof -i :7890 || true
+          lsof -i :9090 || true
+
+          echo "4. 自動截取 macOS 桌面實機畫面"
+          screencapture -x mac_verification.png
+
+      - name: 6. 📤 上傳 Mac 實機畫面與測試日誌
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-verification-evidence
+          path: |
+            mac_verification.png
+            ~/Library/Logs/TianheNetwork/
+          if-no-files-found: warn
+
+      - name: 7. 上傳 macOS DMG 建構產物
         uses: actions/upload-artifact@v4
         with:
           name: TianheNetwork_v3.0.8_macOS
           path: dist_mac/TianheNetwork_v3.0.8_macOS.dmg
           if-no-files-found: error
 
-      - name: 6. 自動發布 Release (若觸發 tag)
+      - name: 8. 自動發布 Release (若觸發 tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:

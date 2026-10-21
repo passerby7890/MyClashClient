@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>天河網絡 - AES-256 DNS TXT 配置加解密工具箱</title>
+  <style>
+    :root {
+      --bg: #0A0F1D;
+      --card-bg: #131B2E;
+      --card-border: #1E293B;
+      --primary: #00E5FF;
+      --primary-hover: #00B4D8;
+      --purple: #C084FC;
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --success: #10B981;
+      --danger: #EF4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang TC", "Microsoft YaHei", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 820px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--primary);
+      background: rgba(0, 229, 255, 0.12);
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      border-radius: 20px;
+      margin-bottom: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    p.subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    /* Key Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      color: var(--primary);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 640px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      background: #0A0F1D;
+      border: 1px solid var(--card-border);
+      color: #FFF;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      border-radius: 10px;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus, textarea:focus {
+      border-color: var(--primary);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 140px;
+      line-height: 1.5;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 18px;
+      border-radius: 10px;
+      border: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #0A0F1D;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #FFF;
+      border: 1px solid var(--card-border);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 8px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .tab-btn.active {
+      background: rgba(0, 229, 255, 0.15);
+      color: var(--primary);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .result-box {
+      margin-top: 16px;
+      background: #080D1A;
+      border: 1px dashed var(--card-border);
+      border-radius: 10px;
+      padding: 14px;
+      position: relative;
+    }
+
+    .result-box pre {
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 13px;
+      color: #38BDF8;
+      font-family: monospace;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 4px 10px;
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #FFF;
+      border-radius: 6px;
+    }
+    .copy-btn:hover { background: rgba(255, 255, 255, 0.2); }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--success);
+      color: #000;
+      font-weight: bold;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    .toast.show { opacity: 1; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="badge">Tianhe Network Security Suite</div>
+      <h1>天河網絡 AES-256 TXT 配置加解密工具</h1>
+      <p class="subtitle">專門用於產生 Cloudflare DNS TXT 防封鎖配置密文與金鑰生成</p>
+    </header>
+
+    <!-- Key & IV 區域 -->
+    <div class="card">
+      <div class="card-title">🔑 AES-256-CBC 金鑰與向量設定 (需與客戶端完全對齊)</div>
+      <div class="grid-2">
+        <div>
+          <label>AES Key (32 字元 / 256 位元):</label>
+          <input type="text" id="aesKey" value="5xfWh681lPHNamV89fKFuqZxQyAaBnjs" maxlength="32">
+        </div>
+        <div>
+          <label>AES IV (16 字元 / 128 位元):</label>
+          <input type="text" id="aesIv" value="s303Khc0kIFZtVeX" maxlength="16">
+        </div>
+      </div>
+      <div class="btn-group">
+        <button class="btn-secondary" onclick="generateRandomKeys()">🎲 隨機產生一組新金鑰與 IV</button>
+        <button class="btn-secondary" onclick="resetToTianheDefaults()">🔄 還原為客戶端預設金鑰</button>
+      </div>
+    </div>
+
+    <!-- 功能切換 Tab -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('encryptTab')">🔒 加密 JSON 配置 (生成 TXT)</button>
+      <button class="tab-btn" onclick="switchTab('decryptTab')">🔓 解密 DNS TXT 密文 (還原 JSON)</button>
+    </div>
+
+    <!-- 加密面板 -->
+    <div id="encryptTab" class="tab-content active card">
+      <label>輸入欲加密的配置 JSON 明文：</label>
+      <textarea id="jsonInput" placeholder="請在此貼上完整的 JSON 配置內容..."></textarea>
+      <div class="btn-group">
+        <button class="btn-primary" onclick="doEncrypt()">⚡ 執行 AES-256 加密</button>
+        <button class="btn-secondary" onclick="fillSampleJson()">📄 載入天河網絡標準範本</button>
+        <button class="btn-secondary" onclick="formatJson()">📐 格式化 JSON</button>
+      </div>
+
+      <div id="encryptResultBox" class="result-box" style="display: none;">
+        <button class="copy-btn" onclick="copyText('encryptedOutput')">複製密文</button>
+        <label style="color: var(--primary);">Cloudflare DNS TXT 密文值 (直接貼至 TXT 記錄)：</label>
+        <pre id="encryptedOutput"></pre>
+      </div>
+    </div>
+
+    <!-- 解密面板 -->
+    <div id="decryptTab" class="tab-content card">
+      <label>貼上從 DNS TXT 記錄抓取之密文 (Base64)：</label>
+      <textarea id="cipherInput" placeholder="請貼上 Base64 格式密文字串..."></textarea>
+      <div class="btn-group">
+        <button class="btn-primary" onclick="doDecrypt()">🔓 執行 AES-256 解密</button>
+      </div>
+
+      <div id="decryptResultBox" class="result-box" style="display: none;">
+        <button class="copy-btn" onclick="copyText('decryptedOutput')">複製 JSON</button>
+        <label style="color: var(--primary);">還原解密 JSON 結果：</label>
+        <pre id="decryptedOutput"></pre>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="toast" class="toast">已複製至剪貼簿！</div>
+
+  <script>
+    const DEFAULT_KEY = "5xfWh681lPHNamV89fKFuqZxQyAaBnjs";
+    const DEFAULT_IV  = "s303Khc0kIFZtVeX";
+
+    const SAMPLE_JSON = {
+      "api_domain": "https://8.218.176.238:3389",
+      "backup_api_domains": [
+        "https://0n21.com",
+        "https://api-backup.v2board-node.com"
+      ],
+      "hosts": "portal.0n23.li",
+      "invite_link": "https://0n21.com/#/register?code=",
+      "crisp_id": "b8b32705-d834-41b5-b6f5-6849fa0679d6",
+      "app_name": "天河網絡",
+      "latest_version": "1.0.0",
+      "min_version": "1.0.0",
+      "apk_url": "https://portal.0n23.li/d/android.apk",
+      "exe_url": "https://portal.0n23.li/d/windows.zip",
+      "changelog": "1. 全面升級深色科技主題\n2. 節點大洲分組 (亞洲/美洲/歐洲/其他)\n3. 支援系統語言自動跟隨"
+    };
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    function generateRandomKeys() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let k = '', iv = '';
+      for (let i = 0; i < 32; i++) k += chars.charAt(Math.floor(Math.random() * chars.length));
+      for (let i = 0; i < 16; i++) iv += chars.charAt(Math.floor(Math.random() * chars.length));
+      document.getElementById('aesKey').value = k;
+      document.getElementById('aesIv').value = iv;
+      showToast('隨機金鑰已生成！記得同步修改客戶端常數');
+    }
+
+    function resetToTianheDefaults() {
+      document.getElementById('aesKey').value = DEFAULT_KEY;
+      document.getElementById('aesIv').value = DEFAULT_IV;
+      showToast('已重設為天河網絡預設金鑰！');
+    }
+
+    function fillSampleJson() {
+      document.getElementById('jsonInput').value = JSON.stringify(SAMPLE_JSON, null, 2);
+    }
+
+    function formatJson() {
+      try {
+        const val = document.getElementById('jsonInput').value;
+        const parsed = JSON.parse(val);
+        document.getElementById('jsonInput').value = JSON.stringify(parsed, null, 2);
+      } catch (e) {
+        alert('JSON 格式無效，無法排版: ' + e.message);
+      }
+    }
+
+    function doEncrypt() {
+      const keyStr = document.getElementById('aesKey').value.trim();
+      const ivStr = document.getElementById('aesIv').value.trim();
+      const jsonStr = document.getElementById('jsonInput').value.trim();
+
+      if (keyStr.length !== 32) return alert('Key 必須為 32 位元組字串！');
+      if (ivStr.length !== 16) return alert('IV 必須為 16 位元組字串！');
+      if (!jsonStr) return alert('請先輸入 JSON 內容！');
+
+      try {
+        // 壓縮去除空格以節約 DNS TXT 體積
+        const compactJson = JSON.stringify(JSON.parse(jsonStr));
+        const key = CryptoJS.enc.Utf8.parse(keyStr);
+        const iv = CryptoJS.enc.Utf8.parse(ivStr);
+
+        const encrypted = CryptoJS.AES.encrypt(compactJson, key, {
+          iv: iv,
+          mode: CryptoJS.mode.CBC,
+          padding: CryptoJS.pad.Pkcs7
+        });
+
+        const cipherBase64 = encrypted.toString();
+        document.getElementById('encryptedOutput').innerText = cipherBase64;
+        document.getElementById('encryptResultBox').style.display = 'block';
+        showToast('加密成功！');
+      } catch (e) {
+        alert('加密出錯: ' + e.message);
+      }
+    }
+
+    function doDecrypt() {
+      const keyStr = document.getElementById('aesKey').value.trim();
+      const ivStr = document.getElementById('aesIv').value.trim();
+      let cipherStr = document.getElementById('cipherInput').value.trim();
+
+      if (keyStr.length !== 32) return alert('Key 必須為 32 位元組字串！');
+      if (ivStr.length !== 16) return alert('IV 必須為 16 位元組字串！');
+      if (!cipherStr) return alert('請先貼上密文字串！');
+
+      // 清理前後引號與空白換行
+      cipherStr = cipherStr.replace(/"/g, '').replace(/\s+/g, '');
+
+      try {
+        const key = CryptoJS.enc.Utf8.parse(keyStr);
+        const iv = CryptoJS.enc.Utf8.parse(ivStr);
+
+        const decrypted = CryptoJS.AES.decrypt(cipherStr, key, {
+          iv: iv,
+          mode: CryptoJS.mode.CBC,
+          padding: CryptoJS.pad.Pkcs7
+        });
+
+        const plainText = decrypted.toString(CryptoJS.enc.Utf8);
+        if (!plainText) {
+          throw new Error('解密結果為空，請確認 Key 與 IV 是否正確！');
+        }
+
+        try {
+          const formatted = JSON.stringify(JSON.parse(plainText), null, 2);
+          document.getElementById('decryptedOutput').innerText = formatted;
+        } catch (_) {
+          document.getElementById('decryptedOutput').innerText = plainText;
+        }
+
+        document.getElementById('decryptResultBox').style.display = 'block';
+        showToast('解密成功！');
+      } catch (e) {
+        alert('解密失敗: ' + e.message);
+      }
+    }
+
+    function copyText(elementId) {
+      const text = document.getElementById(elementId).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('已複製到剪貼簿！');
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    // 初始化自動填入範本
+    fillSampleJson();
+  </script>
+</body>
+</html>

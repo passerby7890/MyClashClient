@@ -1,0 +1,59 @@
+name: Build Tianhe macOS DMG
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS DMG (Apple Silicon & Intel)
+    runs-on: macos-latest
+
+    steps:
+      - name: 1. 檢出專案程式碼
+        uses: actions/checkout@v4
+
+      - name: 2. 設定 Flutter 開發環境
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: 3. 檢查 Flutter 與 macOS 構建工具鏈
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: 4. 執行一鍵瘦身編譯與 DMG 封裝腳本
+        run: |
+          chmod +x ./scripts/build_slim_dmg.sh
+          ./scripts/build_slim_dmg.sh
+
+      - name: 5. 上傳 macOS DMG 建構產物
+        uses: actions/upload-artifact@v4
+        with:
+          name: TianheNetwork_v3.0.8_macOS
+          path: dist_mac/TianheNetwork_v3.0.8_macOS.dmg
+          if-no-files-found: error
+
+      - name: 6. 自動發布 Release (若觸發 tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist_mac/TianheNetwork_v3.0.8_macOS.dmg
+          name: Tianhe Network macOS Client ${{ github.ref_name }}
+          body: |
+            ## 🍎 天河網絡 (Tianhe Network) macOS 旗艦版
+            - 版本：${{ github.ref_name }}
+            - 支援架構：Apple Silicon (M1/M2/M3/M4) + Intel (x86_64) 通用 Universal
+            - 核心引擎：Mihomo Meta + macOS 原生 networksetup 系統代理控制
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

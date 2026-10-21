@@ -1,0 +1,37 @@
+{
+  "Authentication": "天河网络",
+  "hosts": [
+    "https://8.218.176.238:3389",
+    "https://8.218.176.238:8443",
+    "https://8.219.196.216:3389"
+  ],
+  "host_source": "https://portal.thjs789.com/",
+  "Customer": "https://t.me/q8891qcom",
+  "crisp": "b8b32705-d834-41b5-b6f5-6849fa0679d6",
+  "InviteLink": "https://0n21.com/#/register?code=",
+  "latest_version": "1.0.0",
+  "min_version": "1.0.0",
+  "apk_url": "https://portal.thjs789.com/d/android.apk",
+  "changelog": "1. 修復節點收藏功能\n2. 節點支援大洲智能分組\n3. 全新深色科技主題",
+  "notice": 1,
+  "TrafficDetails": 1,
+  "OnlineTicket": 1,
+  "Carousel": [
+    {
+      "Carouselimages": "https://icloud.bupat.top/test.png",
+      "Carouseladdress": "https://t.me/Print_520"
+    }
+  ]
+}
+
+
+
+
+thjsqaes32.spsr86.cv
+https://thjsq999.oss-ap-southeast-1.aliyuncs.com/web-config.json
+
+
+
+
+
+AES key  5xfwh68llPHNamV89fKFuqZxQyAaBnjs  (32位元)                 s303Khc0kIFZtVeX   (16位元)

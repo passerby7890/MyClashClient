@@ -16,34 +16,34 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: 1. 檢出專案程式碼
+      - name: "1. 檢出專案程式碼"
         uses: actions/checkout@v4
 
-      - name: 2. 設定 Flutter 開發環境
+      - name: "2. 設定 Flutter 開發環境"
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      - name: 3. 檢查 Flutter 與 macOS 構建工具鏈
+      - name: "3. 檢查 Flutter 與 macOS 構建工具鏈"
         run: |
           flutter --version
           flutter doctor -v
 
-      - name: 4. 執行一鍵瘦身編譯與 DMG 封裝腳本
+      - name: "4. 執行一鍵瘦身編譯與 DMG 封裝腳本"
         run: |
           chmod +x ./scripts/build_slim_dmg.sh
           ./scripts/build_slim_dmg.sh
 
-      - name: 5. 🧪 Step A: 執行 macOS 雲端 30 項硬核底層與核心驗收矩陣
+      - name: "5. 🧪 Step A: 執行 macOS 雲端 30 項硬核底層與核心驗收矩陣"
         run: |
           python3 ./scripts/macos_cloud_acceptance.py
 
-      - name: 6. 🎨 Step B: 執行 8 大 Bento 分頁 × 4 國語言無視覺溢出測試
+      - name: "6. 🎨 Step B: 執行 8 大 Bento 分頁 × 4 國語言無視覺溢出測試"
         run: |
           flutter test test/macos_visual_acceptance_test.dart
 
-      - name: 7. 🚀 Step C: 真機掛載啟動、8 大分頁巡檢與真實代理連線實測
+      - name: "7. 🚀 Step C: 真機掛載啟動、8 大分頁巡檢與真實代理連線實測"
         run: |
           echo "安裝 cliclick 桌面 GUI 自動化工具..."
           brew install cliclick || true
@@ -132,7 +132,7 @@ jobs:
           echo "檢查系統崩潰日誌"
           ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null || true
 
-      - name: 8. 📤 上傳 macOS 30 項驗收報告、全分頁實機截圖與日誌
+      - name: "8. 📤 上傳 macOS 30 項驗收報告、全分頁實機截圖與日誌"
         uses: actions/upload-artifact@v4
         with:
           name: mac-acceptance-evidence
@@ -142,14 +142,14 @@ jobs:
             ~/Library/Logs/TianheNetwork/
           if-no-files-found: warn
 
-      - name: 9. 💿 上傳 macOS DMG 建構產物
+      - name: "9. 💿 上傳 macOS DMG 建構產物"
         uses: actions/upload-artifact@v4
         with:
           name: TianheNetwork_v3.0.8_macOS
           path: dist_mac/TianheNetwork_v3.0.8_macOS.dmg
           if-no-files-found: error
 
-      - name: 10. 🏷️ 自動發布 Release (若觸發 tag)
+      - name: "10. 🏷️ 自動發布 Release (若觸發 tag)"
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:

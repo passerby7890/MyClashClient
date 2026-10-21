@@ -55,7 +55,10 @@ jobs:
           echo "2. 截取登入執行畫面"
           screencapture -x 01_login_attempt.png
 
-          echo "3. 使用 cliclick 自動點擊關閉 macOS 系統安全確認視窗 (Allow 按鈕: 596, 473)"
+          echo "3. 使用 AppleScript 與 cliclick 關閉 macOS 系統安全確認視窗"
+          osascript -e 'tell application "System Events" to key code 48' 2>/dev/null || true
+          osascript -e 'tell application "System Events" to key code 49' 2>/dev/null || true
+          osascript -e 'tell application "System Events" to key code 36' 2>/dev/null || true
           cliclick c:596,473 || true
           sleep 2
 

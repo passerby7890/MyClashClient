@@ -28,7 +28,7 @@ class DioClient {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json; charset=UTF-8',
-            'User-Agent': '天河網絡/${AppConstants.appVersion} (Macintosh; Mac OS X; Apple Silicon/Intel)',
+            'User-Agent': 'TianheNetwork/${AppConstants.appVersion} (Macintosh; Mac OS X; Apple Silicon/Intel)',
           },
           responseType: ResponseType.json,
         ),

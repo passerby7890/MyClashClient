@@ -13,7 +13,7 @@ permissions:
 jobs:
   build-macos:
     name: Build macOS DMG (Apple Silicon & Intel)
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: 1. 檢出專案程式碼
@@ -35,13 +35,21 @@ jobs:
           chmod +x ./scripts/build_slim_dmg.sh
           ./scripts/build_slim_dmg.sh
 
-      - name: 5. 🧪 雲端 macOS 自動化冒煙測試與實機登入截圖
+      - name: 5. 🧪 Step A: 執行 macOS 雲端 30 項硬核底層與核心驗收矩陣
+        run: |
+          python3 ./scripts/macos_cloud_acceptance.py
+
+      - name: 6. 🎨 Step B: 執行 8 大 Bento 分頁 × 4 國語言無視覺溢出測試
+        run: |
+          flutter test test/macos_visual_acceptance_test.dart
+
+      - name: 7. 🚀 Step C: 真機掛載啟動、8 大分頁巡檢與真實代理連線實測
         run: |
           echo "安裝 cliclick 桌面 GUI 自動化工具..."
           brew install cliclick || true
 
+          mkdir -p audit_screenshots
           mkdir -p ~/Library/Logs/TianheNetwork
-          echo "1. 賦予核心執行權限並啟動 Tianhe.app (注入用戶帳號自動登入)"
           chmod +x dist_mac/Tianhe.app/Contents/Resources/tools/mihomo/mihomo || true
 
           export TIANHE_AUTO_EMAIL="test17318@outlook.com"
@@ -52,52 +60,96 @@ jobs:
           ./dist_mac/Tianhe.app/Contents/MacOS/Tianhe &
           sleep 4
 
-          echo "2. 截取登入執行畫面"
-          screencapture -x 01_login_attempt.png
+          echo "截取登入畫面"
+          screencapture -x audit_screenshots/00_login_screen.png
 
-          echo "3. 使用 AppleScript 與 cliclick 關閉 macOS 系統安全確認視窗"
+          echo "自動點擊關閉 macOS 系統安全確認視窗"
           osascript -e 'tell application "System Events" to key code 48' 2>/dev/null || true
           osascript -e 'tell application "System Events" to key code 49' 2>/dev/null || true
           osascript -e 'tell application "System Events" to key code 36' 2>/dev/null || true
           cliclick c:596,473 || true
           sleep 2
 
-          echo "4. 使用 cliclick 點擊 [Sign In] 登入按鈕 (499, 552)"
+          echo "點擊 [Sign In] 登入按鈕"
           cliclick c:499,552 || true
           sleep 6
 
-          echo "5. 檢查核心進程狀態"
-          pgrep -l mihomo || echo "ℹ️ Mihomo 核心待命啟動中"
+          echo "進入主控台 (Tab 0: Home)"
+          screencapture -x audit_screenshots/00_home.png
 
-          echo "6. 自動截取 macOS 桌面實機畫面 (主控台與驗證畫面)"
-          screencapture -x mac_verification.png
-          screencapture -x 02_dashboard_screen.png
+          echo "點擊加速連線按鈕"
+          cliclick c:650,350 || true
+          sleep 4
+          screencapture -x audit_screenshots/00_home_connected.png
 
-          echo "7. 自動操作儀表板並截圖"
-          cliclick c:450,280 || true
+          echo "=== 🧪 驗證真實代理端口與連線 ==="
+          lsof -i :7890 || true
+          lsof -i :9090 || true
+          curl -I -s -m 8 -x http://127.0.0.1:7890 http://connectivitycheck.gstatic.com/generate_204 > audit_screenshots/proxy_test_204.txt || true
+          curl -I -s -m 8 -x http://127.0.0.1:7890 https://www.google.com > audit_screenshots/proxy_test_google.txt || true
+          cat audit_screenshots/proxy_test_204.txt || true
+
+          echo "巡檢 Tab 1: 購買套餐 (Store)"
+          cliclick c:100,125 || true
           sleep 2
-          screencapture -x 03_dashboard_detail.png
+          screencapture -x audit_screenshots/01_store.png
 
-      - name: 6. 📤 上傳 Mac 實機畫面與測試日誌
+          echo "巡檢 Tab 2: 節點狀態 (Nodes)"
+          cliclick c:100,165 || true
+          sleep 2
+          screencapture -x audit_screenshots/02_nodes.png
+
+          echo "巡檢 Tab 3: 實時連接 (Connections)"
+          cliclick c:100,205 || true
+          sleep 2
+          screencapture -x audit_screenshots/03_connections.png
+
+          echo "巡檢 Tab 4: 流量詳情 (Traffic)"
+          cliclick c:100,245 || true
+          sleep 2
+          screencapture -x audit_screenshots/04_traffic.png
+
+          echo "巡檢 Tab 5: 邀請推廣 (Affiliate)"
+          cliclick c:100,285 || true
+          sleep 2
+          screencapture -x audit_screenshots/05_affiliate.png
+
+          echo "巡檢 Tab 6: 個人中心 (Profile)"
+          cliclick c:100,325 || true
+          sleep 2
+          screencapture -x audit_screenshots/06_profile.png
+
+          echo "巡檢 Tab 7: 高級設置 (Settings)"
+          cliclick c:100,365 || true
+          sleep 2
+          screencapture -x audit_screenshots/07_settings.png
+
+          echo "返回 Tab 0: 加速主頁 (Home Return)"
+          cliclick c:100,85 || true
+          sleep 2
+          screencapture -x audit_screenshots/08_home_return.png
+
+          echo "檢查系統崩潰日誌"
+          ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null || true
+
+      - name: 8. 📤 上傳 macOS 30 項驗收報告、全分頁實機截圖與日誌
         uses: actions/upload-artifact@v4
         with:
-          name: mac-verification-evidence
+          name: mac-acceptance-evidence
           path: |
-            mac_verification.png
-            01_login_attempt.png
-            02_dashboard_screen.png
-            03_dashboard_detail.png
+            mac_acceptance_report.json
+            audit_screenshots/
             ~/Library/Logs/TianheNetwork/
           if-no-files-found: warn
 
-      - name: 7. 上傳 macOS DMG 建構產物
+      - name: 9. 💿 上傳 macOS DMG 建構產物
         uses: actions/upload-artifact@v4
         with:
           name: TianheNetwork_v3.0.8_macOS
           path: dist_mac/TianheNetwork_v3.0.8_macOS.dmg
           if-no-files-found: error
 
-      - name: 8. 自動發布 Release (若觸發 tag)
+      - name: 10. 🏷️ 自動發布 Release (若觸發 tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:

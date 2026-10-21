@@ -37,6 +37,9 @@ jobs:
 
       - name: 5. 🧪 雲端 macOS 自動化冒煙測試與實機登入截圖
         run: |
+          echo "安裝 cliclick 桌面 GUI 自動化工具..."
+          brew install cliclick || true
+
           mkdir -p ~/Library/Logs/TianheNetwork
           echo "1. 賦予核心執行權限並啟動 Tianhe.app (注入用戶帳號自動登入)"
           chmod +x dist_mac/Tianhe.app/Contents/Resources/tools/mihomo/mihomo || true
@@ -49,14 +52,15 @@ jobs:
           ./dist_mac/Tianhe.app/Contents/MacOS/Tianhe &
           sleep 4
 
-          echo "2. 自動點擊關閉系統安全確認視窗"
-          osascript -e 'tell application "System Events" to key code 36' 2>/dev/null || true
-          sleep 2
-
-          echo "3. 截取登入執行畫面"
+          echo "2. 截取登入執行畫面"
           screencapture -x 01_login_attempt.png
 
-          echo "4. 等待登入 API 響應並載入主控台..."
+          echo "3. 使用 cliclick 自動點擊關閉 macOS 系統安全確認視窗 (Allow 按鈕: 596, 473)"
+          cliclick c:596,473 || true
+          sleep 2
+
+          echo "4. 使用 cliclick 點擊 [Sign In] 登入按鈕 (499, 552)"
+          cliclick c:499,552 || true
           sleep 6
 
           echo "5. 檢查核心進程狀態"
@@ -66,6 +70,11 @@ jobs:
           screencapture -x mac_verification.png
           screencapture -x 02_dashboard_screen.png
 
+          echo "7. 自動操作儀表板並截圖"
+          cliclick c:450,280 || true
+          sleep 2
+          screencapture -x 03_dashboard_detail.png
+
       - name: 6. 📤 上傳 Mac 實機畫面與測試日誌
         uses: actions/upload-artifact@v4
         with:
@@ -74,6 +83,7 @@ jobs:
             mac_verification.png
             01_login_attempt.png
             02_dashboard_screen.png
+            03_dashboard_detail.png
             ~/Library/Logs/TianheNetwork/
           if-no-files-found: warn
 

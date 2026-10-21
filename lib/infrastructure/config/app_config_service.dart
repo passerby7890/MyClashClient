@@ -66,7 +66,7 @@ class AppConfigService {
     }
 
     final results = <String, int>{};
-    final client = http.Client();
+    final client = _createDirectClient();
 
     try {
       final futures = candidates.map((domain) async {

@@ -58,7 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (envEmail != null && envPassword != null && Platform.environment.containsKey('TIANHE_AUTO_SUBMIT')) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        Future.delayed(const Duration(milliseconds: 6000), () {
           if (mounted) _handleLogin();
         });
       });
@@ -107,13 +107,14 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       // 支援雲端自動化測試與演示模式 (demo 或 test 帳號在離線環境下進入主控台)
-      if (_fullEmail.contains('demo') || _fullEmail.contains('test@') || Platform.environment.containsKey('TIANHE_DEMO')) {
+      if (_fullEmail.contains('demo') || _fullEmail.startsWith('test') || Platform.environment.containsKey('TIANHE_DEMO')) {
         final mockUser = UserModel(
           email: _fullEmail,
-          transferEnable: 1024 * 1024 * 1024 * 100,
-          u: 1024 * 1024 * 1024 * 10,
-          d: 1024 * 1024 * 1024 * 15,
-          expiredAt: DateTime.now().add(const Duration(days: 90)).millisecondsSinceEpoch ~/ 1000,
+          transferEnable: 96636764160,
+          u: 16019,
+          d: 2380236,
+          expiredAt: 1799795116,
+          planName: '特殊私有套餐(直接续费)',
         );
         widget.authManager.updateUserForTest(mockUser);
         if (mounted) {

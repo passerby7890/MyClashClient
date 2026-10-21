@@ -128,21 +128,24 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                   borderRadius: BorderRadius.circular(DesktopThemeTokens.cardRadius),
                   border: Border.all(color: DesktopThemeTokens.borderMuted),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.alt_route_rounded, color: DesktopThemeTokens.accentCyan, size: 20),
-                    const SizedBox(width: 10),
-                    Text(
-                      i18n.t('more_routing_mode'),
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    const SizedBox(width: 16),
-                    _buildModeChip('rule', Icons.rule_rounded, i18n.t('more_mode_rule')),
-                    const SizedBox(width: 8),
-                    _buildModeChip('global', Icons.public_rounded, i18n.t('more_mode_global')),
-                    const SizedBox(width: 8),
-                    _buildModeChip('direct', Icons.arrow_outward_rounded, i18n.t('more_mode_direct')),
-                  ],
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.alt_route_rounded, color: DesktopThemeTokens.accentCyan, size: 20),
+                      const SizedBox(width: 10),
+                      Text(
+                        i18n.t('more_routing_mode'),
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      const SizedBox(width: 16),
+                      _buildModeChip('rule', Icons.rule_rounded, i18n.t('more_mode_rule')),
+                      const SizedBox(width: 8),
+                      _buildModeChip('global', Icons.public_rounded, i18n.t('more_mode_global')),
+                      const SizedBox(width: 8),
+                      _buildModeChip('direct', Icons.arrow_outward_rounded, i18n.t('more_mode_direct')),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: DesktopThemeTokens.spacing),
@@ -418,9 +421,13 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                 child: Icon(icon, color: DesktopThemeTokens.accentCyan, size: 16),
               ),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
               ),
             ],
           ),
@@ -459,10 +466,14 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
         ),
         title: Text(
           title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
         ),
         subtitle: Text(
           subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.45)),
         ),
         trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: Colors.white30, size: 18),

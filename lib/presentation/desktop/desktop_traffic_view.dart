@@ -114,7 +114,14 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                           child: const Icon(Icons.pie_chart_rounded, color: DesktopThemeTokens.neonCyan, size: 20),
                         ),
                         const SizedBox(width: 12),
-                        Text(i18n.t('traffic_overview'), style: DesktopThemeTokens.titleStyle),
+                        Expanded(
+                          child: Text(
+                            i18n.t('traffic_overview'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: DesktopThemeTokens.titleStyle,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -272,8 +279,15 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                         child: const Icon(Icons.history_rounded, color: DesktopThemeTokens.neonBlue, size: 20),
                       ),
                       const SizedBox(width: 12),
-                      Text(i18n.t('traffic_daily_log'), style: DesktopThemeTokens.titleStyle),
-                      const Spacer(),
+                      Expanded(
+                        child: Text(
+                          i18n.t('traffic_daily_log'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: DesktopThemeTokens.titleStyle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       IconButton(
                         tooltip: '重新整理',
                         icon: _isLoading

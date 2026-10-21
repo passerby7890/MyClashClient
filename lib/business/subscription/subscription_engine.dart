@@ -50,6 +50,9 @@ class SubscriptionEngine extends ChangeNotifier {
     });
   }
 
+  /// 預設背景靜默自動同步週期 (10 分鐘)
+  static const Duration defaultAutoSyncInterval = Duration(minutes: 10);
+
   /// 隨機抖動排程 (每 10 分鐘加上 ±60 秒隨機偏移，防止併發洪峰)
   void _scheduleNextAutoSync() {
     _autoSyncTimer?.cancel();

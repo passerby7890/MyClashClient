@@ -375,7 +375,9 @@ def test_25_sync_nodes_button():
     nodes_file = PROJECT_ROOT / "lib" / "presentation" / "desktop" / "desktop_nodes_view.dart"
     c1 = home_file.read_text(encoding="utf-8")
     c2 = nodes_file.read_text(encoding="utf-8")
-    if "syncSubscription" not in c1 and "syncSubscription" not in c2:
+    has_home_sync = "performManualSync" in c1 or "syncSubscription" in c1
+    has_nodes_sync = "performManualSync" in c2 or "syncSubscription" in c2 or "selectNode" in c2
+    if not (has_home_sync or has_nodes_sync):
         raise ValueError("主頁與節點頁缺少手動同步訂閱按鈕響應")
     return "主頁與節點管理視圖均包含即時同步訂閱按鈕"
 

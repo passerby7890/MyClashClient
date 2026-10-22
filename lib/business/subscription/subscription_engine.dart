@@ -593,9 +593,8 @@ class SubscriptionEngine extends ChangeNotifier {
         debugPrint('[SubscriptionEngine] 手動同步刷新用戶資訊提示: $e');
       }
 
-      // 2. 獲取 Token 與 SubscribeUrl
+      // 2. 獲取 Token
       final token = _authManager?.state.token ?? await _storageService.getToken();
-      final subscribeUrl = _authManager?.state.user?.subscribeUrl;
 
       if (token == null || token.isEmpty) {
         throw Exception('未檢測到登入憑證');
@@ -644,7 +643,6 @@ class SubscriptionEngine extends ChangeNotifier {
       } catch (_) {}
 
       final token = _authManager?.state.token ?? await _storageService.getToken();
-      final subscribeUrl = _authManager?.state.user?.subscribeUrl;
 
       if (token == null || token.isEmpty) {
         _isAutoSyncRunning = false;

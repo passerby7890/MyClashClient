@@ -25,6 +25,63 @@ class AuthManager extends ChangeNotifier {
   List<NoticeModel> _notices = [];
   List<NoticeModel> get notices => _notices;
 
+  /// 預設 16 大主流郵箱後綴白名單 (按熱門度排列)
+  static const List<String> defaultEmailWhitelist = [
+    'qq.com',
+    'gmail.com',
+    '163.com',
+    'outlook.com',
+    '126.com',
+    'foxmail.com',
+    'hotmail.com',
+    'yahoo.com',
+    'sina.com',
+    'aliyun.com',
+    '139.com',
+    '189.cn',
+    'sohu.com',
+    'yeah.net',
+    'zoho.com.cn',
+    'icloud.com',
+  ];
+
+  List<String> _emailWhitelist = List.from(defaultEmailWhitelist);
+  List<String> get emailWhitelist => List.unmodifiable(_emailWhitelist);
+
+  /// 獲取後端開放的註冊郵箱後綴白名單 (GET /api/v1/guest/comm/config)
+  Future<List<String>> fetchEmailWhitelist() async {
+    try {
+      final response = await _dioClient.get('/api/v1/guest/comm/config');
+      final respData = response.data;
+      if (respData is Map && respData['data'] is Map) {
+        final data = respData['data'] as Map;
+        final list = data['email_whitelist_suffix'];
+        if (list is List && list.isNotEmpty) {
+          final customList = list
+              .map((e) => e.toString().trim().replaceAll('@', '').toLowerCase())
+              .where((e) => e.isNotEmpty)
+              .toList();
+          if (customList.isNotEmpty) {
+            // 依據 16 大主流熱門度權重排序 (常用郵箱靠前)
+            customList.sort((a, b) {
+              final idxA = defaultEmailWhitelist.indexOf(a);
+              final idxB = defaultEmailWhitelist.indexOf(b);
+              final weightA = idxA == -1 ? 999 : idxA;
+              final weightB = idxB == -1 ? 999 : idxB;
+              return weightA.compareTo(weightB);
+            });
+            _emailWhitelist = customList;
+            notifyListeners();
+            return _emailWhitelist;
+          }
+        }
+      }
+    } catch (_) {
+      // 網路或介面異常時保底採用預設 16 大主流白名單
+    }
+    return _emailWhitelist;
+  }
+
   AuthManager({
     required DioClient dioClient,
     required SecureStorageService storageService,
@@ -508,7 +565,7 @@ class AuthManager extends ChangeNotifier {
     return '伺服器通訊異常，請稍後重試';
   }
 
-  @visibleForTesting
+  /// 更新本地使用者狀態 (用於演示模式或自動化測試)
   void updateUserForTest(UserModel user, {String token = 'test_token'}) {
     _setState(AuthState.authenticated(user: user, token: token));
   }

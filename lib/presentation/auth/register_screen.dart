@@ -31,16 +31,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   final _inviteCodeController = TextEditingController();
 
-  final List<String> _suffixes = [
-    '@qq.com',
-    '@163.com',
-    '@gmail.com',
-    '@126.com',
-    '@outlook.com',
-    '@hotmail.com',
-    '@foxmail.com',
+  /// 預設主流 16 大白名單郵箱後綴 (按熱門度排序)
+  static const List<String> defaultAllowedEmailSuffixes = [
+    'qq.com',
+    'gmail.com',
+    '163.com',
+    'outlook.com',
+    '126.com',
+    'foxmail.com',
+    'hotmail.com',
+    'yahoo.com',
+    'sina.com',
+    'aliyun.com',
+    '139.com',
+    '189.cn',
+    'sohu.com',
+    'yeah.net',
+    'zoho.com.cn',
+    'icloud.com',
   ];
-  String _selectedSuffix = '@qq.com';
+
+  late List<String> _suffixes;
+  String _selectedSuffix = 'qq.com';
 
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -53,6 +65,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _successMessage;
 
   @override
+  void initState() {
+    super.initState();
+    _suffixes = List.from(widget.authManager.emailWhitelist.isNotEmpty
+        ? widget.authManager.emailWhitelist
+        : defaultAllowedEmailSuffixes);
+    _selectedSuffix = _suffixes.first.replaceAll('@', '');
+    _fetchDynamicWhitelist();
+  }
+
+  Future<void> _fetchDynamicWhitelist() async {
+    try {
+      final list = await widget.authManager.fetchEmailWhitelist();
+      if (mounted && list.isNotEmpty) {
+        setState(() {
+          _suffixes = List.from(list);
+          if (!_suffixes.contains(_selectedSuffix)) {
+            _selectedSuffix = _suffixes.first.replaceAll('@', '');
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     _emailPrefixController.dispose();
@@ -63,13 +99,189 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  /// 組合完整電子郵件 (若用戶已輸入含 @ 符號的完整郵箱則直接使用)
-  String get _fullEmail {
-    final text = _emailPrefixController.text.trim();
-    if (text.contains('@')) {
-      return text;
+  /// 智慧輸入與貼上自動識別 (Smart Paste Split)
+  void _onEmailPrefixChanged(String val) {
+    if (val.contains('@')) {
+      final parts = val.split('@');
+      final prefix = parts[0].trim();
+      final domain = parts.length > 1 ? parts[1].trim().toLowerCase() : '';
+
+      final cleanList = _suffixes.map((s) => s.replaceAll('@', '').toLowerCase()).toList();
+
+      if (domain.isNotEmpty) {
+        if (cleanList.contains(domain)) {
+          setState(() {
+            _selectedSuffix = domain;
+            _errorMessage = null;
+          });
+        } else {
+          setState(() {
+            _errorMessage = '該郵箱後綴 (@$domain) 不支援註冊，請選擇主流郵箱';
+          });
+        }
+      }
+
+      _emailPrefixController.value = TextEditingValue(
+        text: prefix,
+        selection: TextSelection.collapsed(offset: prefix.length),
+      );
     }
-    return '$text$_selectedSuffix';
+  }
+
+  /// 組合完整電子郵件 (強制 前綴 + '@' + 選中白名單後綴)
+  String get _fullEmail {
+    final prefix = _emailPrefixController.text.trim();
+    final cleanSuffix = _selectedSuffix.replaceAll('@', '').trim();
+    return '$prefix@$cleanSuffix';
+  }
+
+  /// 彈出精緻居中科技感後綴選擇面板 (徹底解決底部跑位與肥大按鈕問題)
+  void _showSuffixPickerModal() {
+    final cleanList = _suffixes.map((s) => s.replaceAll('@', '')).toList();
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A), // 深海藍科技感面板
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppTheme.primaryCyan.withOpacity(0.4),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.7),
+                    blurRadius: 32,
+                    offset: const Offset(0, 10),
+                  ),
+                  BoxShadow(
+                    color: AppTheme.primaryCyan.withOpacity(0.18),
+                    blurRadius: 24,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 標題欄 (天河藍科技感標籤 + 關閉按鈕，無手機拉條)
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryCyan.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.primaryCyan.withOpacity(0.3),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.alternate_email_rounded,
+                          color: AppTheme.primaryCyan,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        '選擇註冊郵箱後綴',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                        splashRadius: 18,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 緊湊網格 (3 欄，長寬比 2.9，小巧精緻膠囊，告別肥大笨重按鈕)
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      childAspectRatio: 2.9,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: cleanList.length,
+                    itemBuilder: (context, index) {
+                      final suffix = cleanList[index];
+                      final isSelected = suffix == _selectedSuffix.replaceAll('@', '');
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedSuffix = suffix;
+                            _errorMessage = null;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.primaryCyan.withOpacity(0.18)
+                                : AppTheme.darkSurface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppTheme.primaryCyan
+                                  : Colors.white.withOpacity(0.12),
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: AppTheme.primaryCyan.withOpacity(0.35),
+                                      blurRadius: 8,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '@$suffix',
+                            style: TextStyle(
+                              color: isSelected ? AppTheme.primaryCyan : Colors.white70,
+                              fontSize: 12.5,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// 發送郵箱驗證碼 (對接 V2Board: POST /api/v1/passport/comm/sendEmailVerify)
@@ -78,6 +290,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (prefix.isEmpty) {
       setState(() {
         _errorMessage = '請先輸入郵箱帳號';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    // 嚴格後綴白名單二度校驗
+    final cleanSuffix = _selectedSuffix.replaceAll('@', '').toLowerCase().trim();
+    final cleanList = _suffixes.map((s) => s.replaceAll('@', '').toLowerCase().trim()).toList();
+    if (!cleanList.contains(cleanSuffix)) {
+      setState(() {
+        _errorMessage = '該郵箱後綴不支援註冊，請選擇主流郵箱';
         _successMessage = null;
       });
       return;
@@ -125,6 +348,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_passwordController.text != _confirmPasswordController.text) {
       setState(() {
         _errorMessage = '兩次輸入的密碼不一致';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    // 嚴格後綴白名單二度校驗
+    final cleanSuffix = _selectedSuffix.replaceAll('@', '').toLowerCase().trim();
+    final cleanList = _suffixes.map((s) => s.replaceAll('@', '').toLowerCase().trim()).toList();
+    if (!cleanList.contains(cleanSuffix)) {
+      setState(() {
+        _errorMessage = '該郵箱後綴不支援註冊，請選擇主流郵箱';
         _successMessage = null;
       });
       return;
@@ -312,7 +546,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const SizedBox(height: 18),
                       ],
 
-                      // 4. 郵箱輸入框 + 域名後綴下拉選單
+                      // 4. 郵箱前綴輸入框 + 3x5 網格後綴觸發膠囊按鈕 (告別長條遮擋)
                       Container(
                         height: 52,
                         decoration: BoxDecoration(
@@ -331,8 +565,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 controller: _emailPrefixController,
                                 keyboardType: TextInputType.emailAddress,
                                 style: const TextStyle(color: Colors.white, fontSize: 14),
+                                onChanged: _onEmailPrefixChanged,
                                 decoration: InputDecoration(
-                                  hintText: I18nService.instance.t('email_hint'),
+                                  hintText: '請輸入郵箱前綴 (不含@)',
                                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13),
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
@@ -341,31 +576,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 ),
                                 validator: (val) {
                                   if (val == null || val.trim().isEmpty) {
-                                    return '請輸入郵箱';
+                                    return '請輸入郵箱前綴';
+                                  }
+                                  if (val.contains('@')) {
+                                    return '郵箱前綴不可包含 @';
                                   }
                                   return null;
                                 },
                               ),
                             ),
                             Container(width: 1, height: 26, color: AppTheme.darkBorder),
-                            DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedSuffix,
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppTheme.primaryCyan),
-                                style: const TextStyle(color: AppTheme.primaryCyan, fontSize: 13, fontWeight: FontWeight.w500),
-                                dropdownColor: AppTheme.darkCard,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                items: _suffixes.map((s) {
-                                  return DropdownMenuItem<String>(
-                                    value: s,
-                                    child: Text(s),
-                                  );
-                                }).toList(),
-                                onChanged: (newVal) {
-                                  if (newVal != null) {
-                                    setState(() => _selectedSuffix = newVal);
-                                  }
-                                },
+                            // 右側後綴觸發膠囊按鈕
+                            InkWell(
+                              onTap: _showSuffixPickerModal,
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(14)),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      '@${_selectedSuffix.replaceAll('@', '')}',
+                                      style: const TextStyle(
+                                        color: AppTheme.primaryCyan,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 18,
+                                      color: AppTheme.primaryCyan,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],

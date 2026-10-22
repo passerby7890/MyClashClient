@@ -24,21 +24,10 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailPrefixController = TextEditingController();
+  final _emailController = TextEditingController();
   final _codeController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-
-  final List<String> _suffixes = [
-    '@qq.com',
-    '@163.com',
-    '@gmail.com',
-    '@126.com',
-    '@outlook.com',
-    '@hotmail.com',
-    '@foxmail.com',
-  ];
-  String _selectedSuffix = '@qq.com';
 
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -53,34 +42,27 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    _emailPrefixController.dispose();
+    _emailController.dispose();
     _codeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  /// 組合完整電子郵件 (若用戶已輸入含 @ 符號的完整郵箱則直接使用)
-  String get _fullEmail {
-    final text = _emailPrefixController.text.trim();
-    if (text.contains('@')) {
-      return text;
-    }
-    return '$text$_selectedSuffix';
-  }
+  /// 獲取完整電子郵件 (找回密碼頁純淨完整輸入)
+  String get _fullEmail => _emailController.text.trim();
 
   /// 發送郵箱驗證碼 (對接 V2Board: POST /api/v1/passport/comm/sendEmailVerify)
   Future<void> _handleSendEmailCode() async {
-    final prefix = _emailPrefixController.text.trim();
-    if (prefix.isEmpty) {
+    final email = _fullEmail;
+    if (email.isEmpty) {
       setState(() {
-        _errorMessage = '請先輸入郵箱帳號';
+        _errorMessage = '請先輸入完整郵箱帳號';
         _successMessage = null;
       });
       return;
     }
 
-    final email = _fullEmail;
     setState(() {
       _isSendingCode = true;
       _errorMessage = null;
@@ -303,7 +285,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         const SizedBox(height: 18),
                       ],
 
-                      // 4. 郵箱輸入框 + 域名後綴下拉選單
+                      // 4. 完整郵箱帳號輸入框 (找回密碼頁純淨完整輸入，無後綴下拉選單)
                       Container(
                         height: 52,
                         decoration: BoxDecoration(
@@ -319,11 +301,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             ),
                             Expanded(
                               child: TextFormField(
-                                controller: _emailPrefixController,
+                                controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
                                 style: const TextStyle(color: Colors.white, fontSize: 14),
                                 decoration: InputDecoration(
-                                  hintText: I18nService.instance.t('email_hint'),
+                                  hintText: '請輸入註冊時的完整郵箱帳號',
                                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13),
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
@@ -332,30 +314,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 ),
                                 validator: (val) {
                                   if (val == null || val.trim().isEmpty) {
-                                    return '請輸入郵箱';
+                                    return '請輸入完整郵箱帳號';
+                                  }
+                                  if (!val.contains('@') || !val.contains('.')) {
+                                    return '請輸入有效的郵箱格式 (例: user@gmail.com)';
                                   }
                                   return null;
-                                },
-                              ),
-                            ),
-                            Container(width: 1, height: 26, color: AppTheme.darkBorder),
-                            DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedSuffix,
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppTheme.primaryCyan),
-                                style: const TextStyle(color: AppTheme.primaryCyan, fontSize: 13, fontWeight: FontWeight.w500),
-                                dropdownColor: AppTheme.darkCard,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                items: _suffixes.map((s) {
-                                  return DropdownMenuItem<String>(
-                                    value: s,
-                                    child: Text(s),
-                                  );
-                                }).toList(),
-                                onChanged: (newVal) {
-                                  if (newVal != null) {
-                                    setState(() => _selectedSuffix = newVal);
-                                  }
                                 },
                               ),
                             ),

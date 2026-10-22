@@ -65,10 +65,19 @@ void main() {
     test('2. resetPassword 請求格式與參數處理驗證', () async {
       expect(authManager.resetPassword, isNotNull);
     });
+
+    test('2.1 郵箱白名單固定 16 大主流後綴驗證', () {
+      expect(authManager.emailWhitelist.length, 16);
+      expect(authManager.emailWhitelist.first, 'qq.com');
+      expect(authManager.emailWhitelist.contains('gmail.com'), isTrue);
+      expect(authManager.emailWhitelist.contains('163.com'), isTrue);
+      expect(authManager.emailWhitelist.contains('outlook.com'), isTrue);
+      expect(authManager.emailWhitelist.contains('icloud.com'), isTrue);
+    });
   });
 
   group('V2Board 與 App 賽博科技風深度統一 UI 驗證測試', () {
-    testWidgets('3. 註冊頁面 (RegisterScreen) 呈現統一科技主題與完整元件', (tester) async {
+    testWidgets('3. 註冊頁面 (RegisterScreen) 呈現 16 白名單膠囊觸發器與智慧前綴輸入', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: RegisterScreen(
@@ -84,8 +93,35 @@ void main() {
       expect(find.text('註冊天河網絡，開啟安全極速通道'), findsOneWidget);
       expect(find.text('应用端如无法使用请至网站重新下载'), findsNothing);
 
-      // 下拉選單後綴預設值
+      // 前綴輸入框提示文字
+      expect(find.text('請輸入郵箱前綴 (不含@)'), findsOneWidget);
+
+      // 右側後綴膠囊按鈕預設值
       expect(find.text('@qq.com'), findsOneWidget);
+
+      // 點擊後綴膠囊按鈕彈出 3x5 網格選擇面板
+      await tester.tap(find.text('@qq.com'));
+      await tester.pumpAndSettle();
+      expect(find.text('選擇註冊郵箱後綴'), findsOneWidget);
+      expect(find.text('@gmail.com'), findsOneWidget);
+      expect(find.text('@outlook.com'), findsOneWidget);
+
+      // 選擇 @gmail.com
+      await tester.tap(find.text('@gmail.com'));
+      await tester.pumpAndSettle();
+      expect(find.text('@gmail.com'), findsOneWidget);
+
+      // 智慧貼上自動識別 (Smart Paste Split) 支援主流後綴
+      final prefixInput = find.byType(TextFormField).first;
+      await tester.enterText(prefixInput, 'cyberhero@163.com');
+      await tester.pumpAndSettle();
+      expect(find.text('cyberhero'), findsOneWidget);
+      expect(find.text('@163.com'), findsOneWidget);
+
+      // 智慧貼上攔截非主流臨時信箱
+      await tester.enterText(prefixInput, 'spammer@tempmail.xyz');
+      await tester.pumpAndSettle();
+      expect(find.text('該郵箱後綴 (@tempmail.xyz) 不支援註冊，請選擇主流郵箱'), findsOneWidget);
 
       // 驗證碼輸入框 placeholder 與 發送按鈕
       expect(find.text('郵箱驗證碼'), findsOneWidget);
@@ -102,7 +138,7 @@ void main() {
       expect(find.text(I18nService.instance.currentLanguage.label), findsOneWidget);
     });
 
-    testWidgets('4. 忘記密碼頁面 (ForgotPasswordScreen) 呈現統一科技主題與完整元件', (tester) async {
+    testWidgets('4. 忘記密碼頁面 (ForgotPasswordScreen) 呈現純淨完整郵箱輸入 (無後綴選單)', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: ForgotPasswordScreen(
@@ -118,8 +154,11 @@ void main() {
       expect(find.text('驗證郵箱後即可設置新密碼'), findsOneWidget);
       expect(find.text('应用端如无法使用请至网站重新下载'), findsNothing);
 
-      // 預設後綴
-      expect(find.text('@qq.com'), findsOneWidget);
+      // 完整郵箱帳號輸入提示
+      expect(find.text('請輸入註冊時的完整郵箱帳號'), findsOneWidget);
+
+      // 徹底拔除後綴下拉選單
+      expect(find.text('@qq.com'), findsNothing);
 
       // 驗證碼輸入框與發送按鈕
       expect(find.text('郵箱驗證碼'), findsOneWidget);
@@ -133,7 +172,7 @@ void main() {
       expect(find.text(I18nService.instance.currentLanguage.label), findsOneWidget);
     });
 
-    testWidgets('5. 登入頁面 (LoginScreen) 包含忘記密碼跳轉入口並高度統一樣式', (tester) async {
+    testWidgets('5. 登入頁面 (LoginScreen) 純淨完整輸入且絕無任何後綴選單', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: LoginScreen(
@@ -148,6 +187,12 @@ void main() {
       expect(find.text('天河網絡'), findsOneWidget);
       expect(find.text('登入您的帳號，暢享全球高速節點'), findsOneWidget);
       expect(find.text('应用端如无法使用请至网站重新下载'), findsNothing);
+
+      // 登入頁單一純淨完整郵箱輸入
+      expect(find.text('請輸入完整郵箱帳號'), findsOneWidget);
+
+      // 絕無任何後綴下拉選單或按鈕 (確保不遮擋密碼框與登入按鈕)
+      expect(find.text('@qq.com'), findsNothing);
 
       // 忘記密碼連結
       expect(find.text('忘記密碼？'), findsOneWidget);

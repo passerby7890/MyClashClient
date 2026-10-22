@@ -26,19 +26,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailPrefixController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  final List<String> _suffixes = [
-    '@qq.com',
-    '@163.com',
-    '@gmail.com',
-    '@126.com',
-    '@outlook.com',
-    '@hotmail.com',
-    '@foxmail.com',
-  ];
-  String _selectedSuffix = '@qq.com';
 
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -51,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final envEmail = Platform.environment['TIANHE_AUTO_EMAIL'];
     final envPassword = Platform.environment['TIANHE_AUTO_PASSWORD'];
     if (envEmail != null && envEmail.isNotEmpty) {
-      _emailPrefixController.text = envEmail;
+      _emailController.text = envEmail;
     }
     if (envPassword != null && envPassword.isNotEmpty) {
       _passwordController.text = envPassword;
@@ -67,19 +56,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _emailPrefixController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  /// 組合完整電子郵件
-  String get _fullEmail {
-    final text = _emailPrefixController.text.trim();
-    if (text.contains('@')) {
-      return text;
-    }
-    return '$text$_selectedSuffix';
-  }
+  /// 獲取完整電子郵件 (登入頁純淨完整輸入，不限後綴)
+  String get _fullEmail => _emailController.text.trim();
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
@@ -260,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 18),
                       ],
 
-                      // 4. 郵箱輸入框 + 域名後綴下拉選單 (科技感整合容器)
+                      // 4. 完整郵箱帳號輸入框 (登入頁純淨完整輸入，無後綴下拉選單)
                       Container(
                         height: 52,
                         decoration: BoxDecoration(
@@ -276,11 +259,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             Expanded(
                               child: TextFormField(
-                                controller: _emailPrefixController,
+                                controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
                                 style: const TextStyle(color: Colors.white, fontSize: 14),
                                 decoration: InputDecoration(
-                                  hintText: I18nService.instance.t('email_hint'),
+                                  hintText: '請輸入完整郵箱帳號',
                                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 13),
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
@@ -289,30 +272,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 validator: (val) {
                                   if (val == null || val.trim().isEmpty) {
-                                    return '請輸入郵箱';
+                                    return '請輸入完整郵箱帳號';
+                                  }
+                                  if (!val.contains('@') || !val.contains('.')) {
+                                    return '請輸入有效的郵箱格式 (例: user@gmail.com)';
                                   }
                                   return null;
-                                },
-                              ),
-                            ),
-                            Container(width: 1, height: 26, color: AppTheme.darkBorder),
-                            DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedSuffix,
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppTheme.primaryCyan),
-                                style: const TextStyle(color: AppTheme.primaryCyan, fontSize: 13, fontWeight: FontWeight.w500),
-                                dropdownColor: AppTheme.darkCard,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                items: _suffixes.map((s) {
-                                  return DropdownMenuItem<String>(
-                                    value: s,
-                                    child: Text(s),
-                                  );
-                                }).toList(),
-                                onChanged: (newVal) {
-                                  if (newVal != null) {
-                                    setState(() => _selectedSuffix = newVal);
-                                  }
                                 },
                               ),
                             ),

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/storage/secure_storage_service.dart';
+import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
 import '../auth/auth_manager.dart';
 import 'config_generator.dart';
@@ -20,6 +21,8 @@ class SubscriptionEngine extends ChangeNotifier {
   final DioClient _dioClient;
   final CoreDaemon _coreDaemon;
   final SecureStorageService _storageService;
+  final AppConfigService? _customConfigService;
+  AppConfigService get _configService => _customConfigService ?? _dioClient.configService;
   SecureStorageService get storageService => _storageService;
 
   AuthManager? _authManager;
@@ -124,10 +127,12 @@ class SubscriptionEngine extends ChangeNotifier {
     required DioClient dioClient,
     required CoreDaemon coreDaemon,
     required SecureStorageService storageService,
+    AppConfigService? configService,
     this.isTestMode = false,
   })  : _dioClient = dioClient,
         _coreDaemon = coreDaemon,
-        _storageService = storageService;
+        _storageService = storageService,
+        _customConfigService = configService;
 
   /// 0 秒瞬開：從本地安全加密金庫還原全部節點 (Stale-While-Revalidate 第一步)
   /// 耗時 < 10ms，保障重開 App 免等網路即可看見全部 26 顆節點並一鍵連線
@@ -242,7 +247,7 @@ class SubscriptionEngine extends ChangeNotifier {
     return list;
   }
 
-  /// 靜默拉取並注入訂閱配置 (含 3 次自動重試機制 Auto-Retry 與金庫加密落地)
+  /// 靜默拉取並注入訂閱配置 (含 Happy Eyeballs 雙層容災、去絕對網址化與金庫加密落地)
   /// 恪守零明文原則：不在 UI 或任何無加密磁碟位置展示訂閱 URL
   Future<List<NodeModel>> syncSubscription({
     required String token,
@@ -252,93 +257,59 @@ class SubscriptionEngine extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    int attempts = 0;
-    dynamic lastError;
+    try {
+      final relativePath = await _resolveAndVaultSubscribePath(
+        customSubscribeUrl: customSubscribeUrl,
+        token: token,
+      );
 
-    while (attempts < maxRetries) {
-      attempts++;
-      try {
-        // 1. 發起請求拉取節點 (攜帶 Clash 用戶代理，V2Board 將自動返回相容之 YAML 內容)
-        final reqPath = (customSubscribeUrl != null && customSubscribeUrl.isNotEmpty)
-            ? customSubscribeUrl
-            : '/api/v1/client/subscribe';
-        final queryParams = (customSubscribeUrl != null && customSubscribeUrl.isNotEmpty)
-            ? null
-            : {'token': token};
+      final yamlContent = await _fetchSubscriptionContentWithHappyEyeballs(relativePath);
 
-        final response = await _dioClient.get(
-          reqPath,
-          queryParameters: queryParams,
-          options: Options(
-            headers: {
-              'User-Agent': 'ClashMeta/1.18.0 (Tianhe Network Client)',
-            },
-            responseType: ResponseType.plain,
-          ),
-        );
-
-        final yamlContent = response.data.toString();
-        if (yamlContent.isEmpty) {
-          throw const FormatException('訂閱內容為空');
-        }
-
-        // 2. 解析節點清單 (記憶體保留全部節點以供 UI 完整顯示、大洲分組、收藏與測速)
-        final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
-        if (parsedNodes.isEmpty) {
-          throw const FormatException('未能在訂閱資料中解析出有效節點');
-        }
-
-        _cachedYamlTemplate = yamlContent;
-        _nodes = parsedNodes;
-
-        // 3. 全量節點加密落地保存至本地加密金庫 (保障磁碟零明文)
-        try {
-          await _storageService.saveEncryptedNodes(yamlContent);
-        } catch (_) {}
-
-        // 載入並套用收藏狀態
-        try {
-          _favoriteNodeIds = await _storageService.getFavoriteNodeIds();
-          _applyFavoritesToNodes();
-        } catch (_) {}
-
-        // 4. 首次登入強同步保障：自動將第 1 顆有效節點設為預設選中節點 (100% 杜絕未選中空白狀態)
-        if (_selectedNode == null || !_nodes.any((n) => n.id == _selectedNode!.id)) {
-          _selectedNode = _nodes.first;
-        } else {
-          _selectedNode = _nodes.firstWhere((n) => n.id == _selectedNode!.id);
-        }
-        try {
-          await _storageService.write(AppConstants.storageSelectedNodeId, _selectedNode!.id);
-        } catch (_) {}
-
-        _lastSyncTime = DateTime.now();
-        _isLoading = false;
-        notifyListeners();
-        return _nodes;
-      } catch (e) {
-        lastError = e;
-        debugPrint('[SubscriptionEngine] 同步訂閱第 $attempts 次失敗: $e');
-        if (attempts < maxRetries) {
-          // 自動切換備援 API Host 並等待 1 秒後重試
-          try {
-            _dioClient.rotateHost();
-          } catch (_) {}
-          await Future.delayed(const Duration(seconds: 1));
-        }
+      final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
+      if (parsedNodes.isEmpty) {
+        throw const FormatException('未能在訂閱資料中解析出有效節點');
       }
-    }
 
-    _isLoading = false;
-    notifyListeners();
+      _cachedYamlTemplate = yamlContent;
+      _nodes = parsedNodes;
 
-    // 若多次重試均失敗，但金庫已還原節點，則靜默保留金庫節點，絕不將畫面清空
-    if (_nodes.isNotEmpty) {
-      debugPrint('[SubscriptionEngine] 網路波動重試耗盡，安全保留金庫已還原節點 ${_nodes.length} 顆');
+      // 3. 全量節點加密落地保存至本地加密金庫 (保障磁碟零明文)
+      try {
+        await _storageService.saveEncryptedNodes(yamlContent);
+      } catch (_) {}
+
+      // 載入並套用收藏狀態
+      try {
+        _favoriteNodeIds = await _storageService.getFavoriteNodeIds();
+        _applyFavoritesToNodes();
+      } catch (_) {}
+
+      // 4. 首次登入強同步保障：自動將第 1 顆有效節點設為預設選中節點 (100% 杜絕未選中空白狀態)
+      if (_selectedNode == null || !_nodes.any((n) => n.id == _selectedNode!.id)) {
+        _selectedNode = _nodes.first;
+      } else {
+        _selectedNode = _nodes.firstWhere((n) => n.id == _selectedNode!.id);
+      }
+      try {
+        await _storageService.write(AppConstants.storageSelectedNodeId, _selectedNode!.id);
+      } catch (_) {}
+
+      _lastSyncTime = DateTime.now();
+      _isLoading = false;
+      notifyListeners();
       return _nodes;
-    }
+    } catch (e) {
+      debugPrint('[SubscriptionEngine] 同步訂閱遭遇異常: $e');
+      _isLoading = false;
+      notifyListeners();
 
-    throw lastError ?? Exception('無法獲取專屬線路節點');
+      // 若網路拉取失敗，但金庫已還原節點，則靜默保留金庫節點，絕不將畫面清空
+      if (_nodes.isNotEmpty) {
+        debugPrint('[SubscriptionEngine] 網路波動重試耗盡，安全保留金庫已還原節點 ${_nodes.length} 顆');
+        return _nodes;
+      }
+      rethrow;
+    }
   }
 
   /// 選取連線節點 (極速熱切換模式 + 單節點動態切片)
@@ -630,26 +601,9 @@ class SubscriptionEngine extends ChangeNotifier {
         throw Exception('未檢測到登入憑證');
       }
 
-      // 3. 拉取最新節點 (攜帶 Clash 用戶代理)
-      final reqPath = (subscribeUrl != null && subscribeUrl.isNotEmpty)
-          ? subscribeUrl
-          : '/api/v1/client/subscribe';
-      final queryParams = (subscribeUrl != null && subscribeUrl.isNotEmpty)
-          ? null
-          : {'token': token};
-
-      final response = await _dioClient.get(
-        reqPath,
-        queryParameters: queryParams,
-        options: Options(
-          headers: {
-            'User-Agent': 'ClashMeta/1.18.0 (Tianhe Network Client)',
-          },
-          responseType: ResponseType.plain,
-        ),
-      );
-
-      final yamlContent = response.data.toString();
+      // 3. 拉取最新節點 (透過 Happy Eyeballs 雙層容災與去絕對網址化通道)
+      final relativePath = await _resolveAndVaultSubscribePath(token: token);
+      final yamlContent = await _fetchSubscriptionContentWithHappyEyeballs(relativePath);
       if (yamlContent.isEmpty) {
         throw const FormatException('訂閱內容為空');
       }
@@ -697,26 +651,9 @@ class SubscriptionEngine extends ChangeNotifier {
         return;
       }
 
-      // 2. 靜默拉取最新節點
-      final reqPath = (subscribeUrl != null && subscribeUrl.isNotEmpty)
-          ? subscribeUrl
-          : '/api/v1/client/subscribe';
-      final queryParams = (subscribeUrl != null && subscribeUrl.isNotEmpty)
-          ? null
-          : {'token': token};
-
-      final response = await _dioClient.get(
-        reqPath,
-        queryParameters: queryParams,
-        options: Options(
-          headers: {
-            'User-Agent': 'ClashMeta/1.18.0 (Tianhe Network Client)',
-          },
-          responseType: ResponseType.plain,
-        ),
-      );
-
-      final yamlContent = response.data.toString();
+      // 2. 靜默拉取最新節點 (Happy Eyeballs 雙層容災)
+      final relativePath = await _resolveAndVaultSubscribePath(token: token);
+      final yamlContent = await _fetchSubscriptionContentWithHappyEyeballs(relativePath);
       if (yamlContent.isNotEmpty) {
         final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
         if (parsedNodes.isNotEmpty) {
@@ -839,5 +776,175 @@ class SubscriptionEngine extends ChangeNotifier {
   void dispose() {
     _autoSyncTimer?.cancel();
     super.dispose();
+  }
+
+  /// 去絕對網址化、提取純相對路徑與 Token，並寫入 L2 本地加密金庫
+  Future<String> _resolveAndVaultSubscribePath({
+    String? customSubscribeUrl,
+    String? token,
+  }) async {
+    String? rawPath = customSubscribeUrl;
+    if (rawPath == null || rawPath.isEmpty) {
+      rawPath = _authManager?.state.user?.subscribeUrl;
+    }
+    if (rawPath == null || rawPath.isEmpty) {
+      rawPath = await _storageService.getCachedSubscribePath();
+    }
+    if (rawPath == null || rawPath.isEmpty) {
+      rawPath = '/api/v1/client/subscribe';
+    }
+
+    String relativePath = rawPath;
+    if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+      try {
+        final uri = Uri.parse(rawPath);
+        final host = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+        _configService.addCandidateDomain(host);
+        relativePath = '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
+      } catch (_) {}
+    }
+
+    // 確保 token 正確帶入 query
+    final effectiveToken = (token != null && token.isNotEmpty)
+        ? token
+        : (_authManager?.state.token ?? await _storageService.getToken());
+
+    if (!relativePath.contains('token=') && effectiveToken != null && effectiveToken.isNotEmpty) {
+      final sep = relativePath.contains('?') ? '&' : '?';
+      relativePath = '$relativePath${sep}token=$effectiveToken';
+    }
+
+    // 寫入 L2 加密金庫保存
+    try {
+      await _storageService.saveCachedSubscribePath(relativePath);
+    } catch (_) {}
+
+    return relativePath;
+  }
+
+  /// Happy Eyeballs 雙層容災訂閱下載核心：
+  /// 第一層：當前主機 (currentApiDomain) 2.5 秒極速直連通道
+  /// 第二層：故障瞬間觸發「全備援並發搶答競速下載 (Happy Eyeballs Parallel Race)」
+  Future<String> _fetchSubscriptionContentWithHappyEyeballs(String relativePath) async {
+    final currentHost = _configService.currentApiDomain;
+
+    // --- 第一層：極速直連通道 (2.5 秒短超時) ---
+    try {
+      debugPrint('[SubscriptionEngine] ⚡ [Layer 1] 嘗試極速直連當前主機: $currentHost$relativePath (超時 2500ms)');
+      final yaml = await _downloadFromSingleHost(
+        currentHost,
+        relativePath,
+        timeout: const Duration(milliseconds: 2500),
+      );
+      if (yaml.isNotEmpty) {
+        debugPrint('[SubscriptionEngine] ✅ [Layer 1] 直連成功！取得訂閱內容');
+        return yaml;
+      }
+    } catch (e) {
+      debugPrint('[SubscriptionEngine] ⚠️ [Layer 1] 當前主機 ($currentHost) 直連失敗或超時: $e');
+    }
+
+    // --- 第二層：故障瞬間觸發全主機並發競速下載 (Parallel Race Failover) ---
+    final allCandidates = <String>[];
+    for (final d in _configService.availableApiDomains) {
+      if (!allCandidates.contains(d)) allCandidates.add(d);
+    }
+    for (final d in _configService.activeConfig.allApiDomains) {
+      if (!allCandidates.contains(d)) allCandidates.add(d);
+    }
+    for (final d in AppConstants.fallbackApiDomains) {
+      if (!allCandidates.contains(d)) allCandidates.add(d);
+    }
+
+    // 將剛才失敗的主機移到最後，優先讓其他活著的備用主機搶答
+    allCandidates.remove(currentHost);
+    final raceHosts = List<String>.from(allCandidates)..add(currentHost);
+
+    debugPrint('[SubscriptionEngine] 🚀 [Layer 2] 觸發全備援並發競速下載！候選清單: $raceHosts');
+
+    if (raceHosts.isEmpty) {
+      throw Exception('無可用之 API 主機進行並發競速');
+    }
+
+    final winner = await _raceDownloadSubscription(raceHosts, relativePath);
+
+    // 👑 將最快活著回傳 HTTP 200 有效節點的主機正式扶正為全域 currentApiDomain
+    _configService.setCurrentApiDomain(winner.winnerHost);
+    debugPrint('[SubscriptionEngine] 👑 併發搶答勝出者: ${winner.winnerHost}！已自動扶正為全域 currentApiDomain');
+
+    return winner.yaml;
+  }
+
+  /// 單一主機訂閱下載與驗證 (僅在 HTTP 200 且返回有效 YAML 節點時視為成功)
+  Future<String> _downloadFromSingleHost(
+    String host,
+    String relativePath, {
+    Duration timeout = const Duration(milliseconds: 3500),
+  }) async {
+    var cleanHost = host.trim();
+    while (cleanHost.endsWith('/')) {
+      cleanHost = cleanHost.substring(0, cleanHost.length - 1);
+    }
+    if (cleanHost.endsWith('/api/v1')) {
+      cleanHost = cleanHost.substring(0, cleanHost.length - 7);
+    }
+    final targetUrl = '$cleanHost$relativePath';
+
+    final response = await _dioClient.dio.get<String>(
+      targetUrl,
+      options: Options(
+        headers: {
+          'User-Agent': 'ClashMeta/1.18.0 (Tianhe Network Client)',
+        },
+        responseType: ResponseType.plain,
+        connectTimeout: timeout,
+        receiveTimeout: timeout,
+        sendTimeout: timeout,
+      ),
+    );
+
+    if (response.statusCode != 200) {
+      throw HttpException('HTTP 狀態碼非 200: ${response.statusCode}', uri: Uri.parse(targetUrl));
+    }
+
+    final yaml = response.data?.toString() ?? '';
+    if (yaml.trim().isEmpty) {
+      throw const FormatException('主機回應訂閱內容為空');
+    }
+
+    final proxies = ConfigGenerator.parseProxiesFromYaml(yaml);
+    if (proxies.isEmpty) {
+      throw const FormatException('未能在該主機返回之 YAML 解析出有效節點');
+    }
+
+    return yaml;
+  }
+
+  /// 並發搶答：向多台備援主機同時發起下載，最快返回有效 YAML 者勝出
+  Future<({String yaml, String winnerHost})> _raceDownloadSubscription(
+    List<String> hosts,
+    String relativePath,
+  ) {
+    final completer = Completer<({String yaml, String winnerHost})>();
+    int pending = hosts.length;
+    final errors = <String>[];
+
+    for (final host in hosts) {
+      _downloadFromSingleHost(host, relativePath).then((yaml) {
+        if (!completer.isCompleted) {
+          completer.complete((yaml: yaml, winnerHost: host));
+        }
+      }).catchError((err) {
+        errors.add('$host ($err)');
+        pending--;
+        if (pending == 0 && !completer.isCompleted) {
+          completer.completeError(
+            Exception('所有備援主機並發競速下載皆失敗: ${errors.join('; ')}'),
+          );
+        }
+      });
+    }
+
+    return completer.future;
   }
 }

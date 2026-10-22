@@ -43,6 +43,10 @@ jobs:
         run: |
           flutter test test/macos_visual_acceptance_test.dart
 
+      - name: "6.5 ⚡ Step B.5: 執行 Happy Eyeballs 零感容災與混沌競速驗收測試"
+        run: |
+          flutter test test/happy_eyeballs_failover_test.dart
+
       - name: "7. 🚀 Step C: 真機掛載啟動、8 大分頁巡檢與真實代理連線實測"
         run: |
           echo "安裝 cliclick 桌面 GUI 自動化工具..."

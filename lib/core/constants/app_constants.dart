@@ -90,6 +90,7 @@ class AppConstants {
   static const String storageLastTrafficAlertTime = 'v2board_last_traffic_alert_time';
   static const String storageEncryptedNodes = 'v2board_encrypted_nodes_vault';
   static const String storageAutoConnectOnNodeSelect = 'v2board_auto_connect_on_node_select';
+  static const String storageCachedSubscribePath = 'v2board_cached_subscribe_path';
 
   // --- 網路連線超時設定 (毫秒) ---
   static const int connectTimeoutMs = 8000;

@@ -122,6 +122,46 @@ class AppConfigService {
     return next;
   }
 
+  /// 將指定的主機正式扶正為全域 currentApiDomain (放置於最優先第 0 順位)
+  void setCurrentApiDomain(String domain) {
+    var cleanDomain = domain.trim();
+    while (cleanDomain.endsWith('/')) {
+      cleanDomain = cleanDomain.substring(0, cleanDomain.length - 1);
+    }
+    if (cleanDomain.endsWith('/api/v1')) {
+      cleanDomain = cleanDomain.substring(0, cleanDomain.length - 7);
+    }
+    if (cleanDomain.isEmpty) return;
+
+    if (_racedApiDomains.isEmpty) {
+      _racedApiDomains = List.from(activeConfig.allApiDomains);
+    }
+    _racedApiDomains.remove(cleanDomain);
+    _racedApiDomains.insert(0, cleanDomain);
+    _activeDomainIndex = 0;
+    debugPrint('[AppConfigService] 👑 正式扶正最快主機為全域 currentApiDomain: $cleanDomain (候選隊列: $_racedApiDomains)');
+  }
+
+  /// 動態添加備用主機至候選池末尾 (去絕對網址化備援機制)
+  void addCandidateDomain(String domain) {
+    var cleanDomain = domain.trim();
+    while (cleanDomain.endsWith('/')) {
+      cleanDomain = cleanDomain.substring(0, cleanDomain.length - 1);
+    }
+    if (cleanDomain.endsWith('/api/v1')) {
+      cleanDomain = cleanDomain.substring(0, cleanDomain.length - 7);
+    }
+    if (cleanDomain.isEmpty) return;
+
+    if (_racedApiDomains.isEmpty) {
+      _racedApiDomains = List.from(activeConfig.allApiDomains);
+    }
+    if (!_racedApiDomains.contains(cleanDomain)) {
+      _racedApiDomains.add(cleanDomain);
+      debugPrint('[AppConfigService] ➕ 加入額外備援主機至候選池末尾: $cleanDomain (候選總數: ${_racedApiDomains.length})');
+    }
+  }
+
   /// 初始化服務 (在 Splash 頁面或 main() 調用)
   /// 依據「哪個快速就先代入哪個」原則，同時並行請求：
   /// 1. 阿里雲 OSS 地址 (ConFigOss.json)

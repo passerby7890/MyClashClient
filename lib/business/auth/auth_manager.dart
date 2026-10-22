@@ -278,10 +278,26 @@ class AuthManager extends ChangeNotifier {
             }
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[AuthManager] /api/v1/user/getSubscribe 獲取失敗: $e，嘗試從本地 L2 加密金庫還原 subscribe_path');
+        final cachedPath = await _storageService.getCachedSubscribePath();
+        if (cachedPath != null && cachedPath.isNotEmpty) {
+          subscribeUrl = cachedPath;
+        }
+      }
 
-      if (subscribeUrl != null) {
-        dataMap['subscribe_url'] = subscribeUrl;
+      if (subscribeUrl != null && subscribeUrl.isNotEmpty) {
+        String relativeSubscribePath = subscribeUrl;
+        if (subscribeUrl.startsWith('http://') || subscribeUrl.startsWith('https://')) {
+          try {
+            final uri = Uri.parse(subscribeUrl);
+            final host = '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+            _dioClient.configService.addCandidateDomain(host);
+            relativeSubscribePath = '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
+          } catch (_) {}
+        }
+        await _storageService.saveCachedSubscribePath(relativeSubscribePath);
+        dataMap['subscribe_url'] = relativeSubscribePath;
       }
 
       final user = UserModel.fromJson(dataMap);

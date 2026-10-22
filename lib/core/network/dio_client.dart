@@ -33,18 +33,18 @@ class DioClient {
           responseType: ResponseType.json,
         ),
       );
-    }
 
-    if (!kIsWeb) {
-      _dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () {
-          final client = HttpClient();
-          // 🛡️ 絕招一：禁止系統 HTTP 代理 (強制 DIRECT 直連，無視 Wi-Fi 代理 / Fiddler / Charles / 小黃鳥抓包)
-          client.findProxy = (uri) => 'DIRECT';
-          client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
-          return client;
-        },
-      );
+      if (!kIsWeb) {
+        _dio.httpClientAdapter = IOHttpClientAdapter(
+          createHttpClient: () {
+            final client = HttpClient();
+            // 🛡️ 絕招一：禁止系統 HTTP 代理 (強制 DIRECT 直連，無視 Wi-Fi 代理 / Fiddler / Charles / 小黃鳥抓包)
+            client.findProxy = (uri) => 'DIRECT';
+            client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+            return client;
+          },
+        );
+      }
     }
 
     // 注入動態 BaseUrl 攔截器，確保每次請求皆使用當前最新生效的 API 網域
@@ -69,12 +69,11 @@ class DioClient {
               err.type == DioExceptionType.connectionError ||
               err.type == DioExceptionType.receiveTimeout ||
               err.type == DioExceptionType.sendTimeout ||
+              err.type == DioExceptionType.badCertificate ||
               statusCode == 404 ||
-              statusCode == 502 ||
-              statusCode == 503 ||
-              statusCode == 504;
+              (statusCode != null && statusCode >= 500 && statusCode <= 524);
 
-          final allDomains = _configService.activeConfig.allApiDomains;
+          final allDomains = _configService.availableApiDomains;
           final retryCount = (err.requestOptions.extra['api_failover_retry'] as int?) ?? 0;
 
           if (isFailoverError && retryCount < allDomains.length && allDomains.length > 1) {
@@ -93,6 +92,20 @@ class DioClient {
               base = base.substring(0, base.length - 7);
             }
             options.baseUrl = base;
+
+            // ⚡ 強制替換絕對網址的 Host 與 Port（根除 baseUrl 被 Dio 忽略的 Bug！）
+            if (options.path.startsWith('http://') || options.path.startsWith('https://')) {
+              try {
+                final oldUri = Uri.parse(options.path);
+                final newBaseUri = Uri.parse(base);
+                final replacedUri = oldUri.replace(
+                  scheme: newBaseUri.scheme,
+                  host: newBaseUri.host,
+                  port: newBaseUri.hasPort ? newBaseUri.port : (newBaseUri.scheme == 'https' ? 443 : 80),
+                );
+                options.path = replacedUri.toString();
+              } catch (_) {}
+            }
 
             try {
               final response = await _dio.fetch(options);
@@ -118,6 +131,9 @@ class DioClient {
       _dio.interceptors.addAll(interceptors);
     }
   }
+
+  /// 取得全域動態配置服務
+  AppConfigService get configService => _configService;
 
   /// 取得底層 Dio 實例
   Dio get dio => _dio;

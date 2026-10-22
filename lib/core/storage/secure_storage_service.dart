@@ -145,6 +145,28 @@ class SecureStorageService {
     await delete(AppConstants.storageEncryptedNodes);
   }
 
+  /// 儲存提取之相對訂閱路徑與 Token (L2 金庫加密持久化)
+  Future<void> saveCachedSubscribePath(String relativePath) async {
+    final enc = _aes.encrypt(relativePath);
+    await write(AppConstants.storageCachedSubscribePath, enc);
+  }
+
+  /// 獲取快取之相對訂閱路徑 (自動解密還原)
+  Future<String?> getCachedSubscribePath() async {
+    final raw = await read(AppConstants.storageCachedSubscribePath);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      return _aes.decrypt(raw);
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  /// 刪除快取之相對訂閱路徑
+  Future<void> deleteCachedSubscribePath() async {
+    await delete(AppConstants.storageCachedSubscribePath);
+  }
+
   /// 清除所有認證憑證與加密金庫 (用於登出或 401 攔截)
   Future<void> clearAll() async {
     _memoryFallback.clear();
@@ -152,5 +174,6 @@ class SecureStorageService {
     await delete(AppConstants.storageUserInfo);
     await delete(AppConstants.storageSelectedNodeId);
     await delete(AppConstants.storageEncryptedNodes);
+    await delete(AppConstants.storageCachedSubscribePath);
   }
 }

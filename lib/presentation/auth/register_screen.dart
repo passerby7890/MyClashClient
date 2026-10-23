@@ -31,7 +31,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   final _inviteCodeController = TextEditingController();
 
-  /// 預設主流 16 大白名單郵箱後綴 (按熱門度排序)
+  /// 預設主流 15 大白名單郵箱後綴 (按熱門度排序，剛好 3x5 網格)
   static const List<String> defaultAllowedEmailSuffixes = [
     'qq.com',
     'gmail.com',
@@ -48,7 +48,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     'sohu.com',
     'yeah.net',
     'zoho.com.cn',
-    'icloud.com',
   ];
 
   late List<String> _suffixes;

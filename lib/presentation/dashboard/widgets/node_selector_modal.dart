@@ -67,6 +67,31 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
     super.dispose();
   }
 
+  bool _isRefreshing = false;
+
+  Future<void> _handleRefreshNodes() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    try {
+      await widget.subscriptionEngine.performManualSync();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(I18nService.instance.t('sub_synced_success'))),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刷新失敗: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
   Future<void> _handleSpeedTest() async {
     setState(() => _isTestingLatency = true);
     await widget.subscriptionEngine.pingAllNodes();
@@ -202,19 +227,37 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                 ),
                 const SizedBox(width: 14),
 
-                // 分頁標籤 Chips
+                // 分頁標籤 Chips (一排完整呈現，免橫向捲動)
                 Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: _buildFilterChips(i18n),
-                    ),
+                  child: Row(
+                    children: _buildFilterChips(i18n),
                   ),
                 ),
 
                 const SizedBox(width: 12),
 
-                // 右側按鈕：[⚡ 一鍵測速]、[🚀 自動選最快]
+                // 右側按鈕：[↻ 刷新節點]、[⚡ 節點測速]、[🚀 智慧優選]
+                FilledButton.icon(
+                  onPressed: _isRefreshing ? null : _handleRefreshNodes,
+                  icon: _isRefreshing
+                      ? const SizedBox(
+                          width: 13,
+                          height: 13,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.sync_rounded, size: 16),
+                  label: Text(
+                    i18n.t('node_refresh_nodes'),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF334155),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 FilledButton.icon(
                   onPressed: _isTestingLatency ? null : _handleSpeedTest,
                   icon: _isTestingLatency
@@ -225,28 +268,28 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                         )
                       : const Icon(Icons.bolt_rounded, size: 16),
                   label: Text(
-                    _isTestingLatency ? i18n.t('node_testing') : i18n.t('node_batch_ping'),
+                    _isTestingLatency ? i18n.t('node_testing') : i18n.t('node_speed_test'),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0EA5E9),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 FilledButton.icon(
                   onPressed: allNodes.isEmpty ? null : _handleSelectFastest,
-                  icon: const Icon(Icons.flash_on_rounded, size: 16),
+                  icon: const Icon(Icons.rocket_launch_rounded, size: 16),
                   label: Text(
-                    i18n.t('node_select_fastest'),
+                    i18n.t('node_smart_optimal'),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.successEmerald,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
@@ -285,10 +328,16 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                 ),
                 Row(
                   children: [
-                    TextButton.icon(
-                      onPressed: allNodes.isEmpty ? null : _handleSelectFastest,
-                      icon: const Icon(Icons.flash_on_rounded, size: 16, color: AppTheme.primaryCyan),
-                      label: Text(i18n.t('node_select_fastest'), style: const TextStyle(color: AppTheme.primaryCyan, fontSize: 13, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      tooltip: i18n.t('node_refresh_nodes'),
+                      onPressed: _isRefreshing ? null : _handleRefreshNodes,
+                      icon: _isRefreshing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryCyan),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 18, color: AppTheme.primaryCyan),
                     ),
                     TextButton.icon(
                       onPressed: _isTestingLatency ? null : _handleSpeedTest,
@@ -300,9 +349,14 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                             )
                           : const Icon(Icons.bolt_rounded, size: 16, color: AppTheme.primaryCyan),
                       label: Text(
-                        _isTestingLatency ? i18n.t('node_testing') : i18n.t('node_batch_ping'),
+                        _isTestingLatency ? i18n.t('node_testing') : i18n.t('node_speed_test'),
                         style: const TextStyle(color: AppTheme.primaryCyan, fontSize: 13, fontWeight: FontWeight.bold),
                       ),
+                    ),
+                    TextButton.icon(
+                      onPressed: allNodes.isEmpty ? null : _handleSelectFastest,
+                      icon: const Icon(Icons.rocket_launch_rounded, size: 16, color: AppTheme.successEmerald),
+                      label: Text(i18n.t('node_smart_optimal'), style: const TextStyle(color: AppTheme.successEmerald, fontSize: 13, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),

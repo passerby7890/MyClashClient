@@ -14,6 +14,7 @@ jobs:
   build-macos:
     name: Build macOS DMG (Apple Silicon & Intel)
     runs-on: macos-14
+    timeout-minutes: 120
 
     steps:
       - name: "1. 檢出專案程式碼"
@@ -38,6 +39,10 @@ jobs:
       - name: "5. 🧪 Step A: 執行 macOS 雲端 30 項硬核底層與核心驗收矩陣"
         run: |
           python3 ./scripts/macos_cloud_acceptance.py
+
+      - name: "5.5 🔥 Step A.5: 執行 macOS 雲端實機連續 1 小時（60 分鐘）極限烤機驗收"
+        run: |
+          python3 ./scripts/macos_60min_burnin_test.py
 
       - name: "6. 🎨 Step B: 執行 8 大 Bento 分頁 × 4 國語言無視覺溢出測試"
         run: |
@@ -136,13 +141,15 @@ jobs:
           echo "檢查系統崩潰日誌"
           ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null || true
 
-      - name: "8. 📤 上傳 macOS 30 項驗收報告、全分頁實機截圖與日誌"
+      - name: "8. 📤 上傳 macOS 60 分鐘烤機報告、30 項驗收報告、全分頁實機截圖與日誌"
         uses: actions/upload-artifact@v4
         with:
           name: mac-acceptance-evidence
           path: |
+            mac_60min_burnin_report.json
             mac_acceptance_report.json
             audit_screenshots/
+            docs/audit_mac/
             ~/Library/Logs/TianheNetwork/
           if-no-files-found: warn
 

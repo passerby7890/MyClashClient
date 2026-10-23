@@ -291,6 +291,7 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
 
       // 主頁儀表板
       'app_title': '天河網絡',
+      'app_name': '天河網絡',
       'service_and_traffic': '流量與服務狀態',
       'details': '明細',
       'service_normal': '服務正常',
@@ -338,6 +339,9 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
 
       // 節點選擇彈窗
       'node_selector_title': '線路節點選擇',
+      'node_refresh_nodes': '刷新節點',
+      'node_speed_test': '節點測速',
+      'node_smart_optimal': '智慧優選',
       'node_select_fastest': '選最快',
       'node_batch_ping': '測速',
       'node_search_hint': '搜尋節點名稱、地區或協定...',
@@ -727,6 +731,7 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
       'hot_badge': '热门',
 
       'app_title': '天河网络',
+      'app_name': '天河网络',
       'service_and_traffic': '流量与服务状态',
       'details': '明细',
       'service_normal': '服务正常',
@@ -772,6 +777,9 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
       'traffic_warning_low': '您的剩余流量已低于 10%，请及时前往商城续费！',
 
       'node_selector_title': '线路节点选择',
+      'node_refresh_nodes': '刷新节点',
+      'node_speed_test': '节点测速',
+      'node_smart_optimal': '智慧优选',
       'node_select_fastest': '选最快',
       'node_batch_ping': '测速',
       'node_search_hint': '搜索节点名称、地区或协议...',
@@ -1153,6 +1161,7 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
       'hot_badge': 'HOT',
 
       'app_title': 'Tianhe Network',
+      'app_name': 'Tianhe Network',
       'service_and_traffic': 'Traffic & Service Status',
       'details': 'Details',
       'service_normal': 'Operational',
@@ -1198,6 +1207,9 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
       'traffic_warning_low': 'Remaining traffic is below 10%, please renew in store!',
 
       'node_selector_title': 'Server Selection',
+      'node_refresh_nodes': 'Refresh',
+      'node_speed_test': 'Speed Test',
+      'node_smart_optimal': 'Optimal',
       'node_select_fastest': 'Fastest',
       'node_batch_ping': 'Ping',
       'node_search_hint': 'Search node, region or protocol...',
@@ -1578,6 +1590,7 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
       'hot_badge': '人気',
 
       'app_title': '天河ネットワーク',
+      'app_name': '天河ネットワーク',
       'service_and_traffic': '通信量とサービス状態',
       'details': '詳細',
       'service_normal': '正常稼働中',
@@ -1623,6 +1636,9 @@ class I18nService extends ChangeNotifier with WidgetsBindingObserver {
       'traffic_warning_low': '残り通信量が10％未満です。ショップで更新してください！',
 
       'node_selector_title': 'サーバー選択',
+      'node_refresh_nodes': '更新',
+      'node_speed_test': '速度測定',
+      'node_smart_optimal': '最適ノード',
       'node_select_fastest': '最速を選択',
       'node_batch_ping': '測定',
       'node_search_hint': 'ノード名、地域、プロトコルを検索...',

@@ -563,6 +563,13 @@ class MacosNativeProxy {
   void refreshWinINet() {}
   Future<File?> findMihomoExecutable() async => File(getMihomoExecutablePath());
   Future<Directory> ensureWorkingDirectoryWithDatabases() => prepareCoreWorkingDir();
+  Future<void> killOrphanMihomoProcesses({List<int>? ports}) async {
+    try {
+      if (!kIsWeb && Platform.isMacOS) {
+        await Process.run('killall', ['-9', 'mihomo']);
+      }
+    } catch (_) {}
+  }
 }
 
 /// 兼容別名 (讓既有 WindowsProxyService 引用零改動無縫相容)

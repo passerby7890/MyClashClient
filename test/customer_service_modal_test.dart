@@ -86,7 +86,7 @@ void main() {
       expect(planName, equals('白金旗艦線路套餐'));
       expect(trafficRemaining, contains('TB'));
       expect(expireAt, isNotEmpty);
-      expect(appVersion, equals('v3.0.8 (Build 108)'));
+      expect(appVersion, equals('v3.0.9 (Build 109)'));
     });
   });
 }

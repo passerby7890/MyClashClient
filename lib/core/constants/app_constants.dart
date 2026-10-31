@@ -100,9 +100,9 @@ class AppConstants {
   // --- 客戶端版本識別 (單一事實來源 Single Source of Truth，支援編譯期 --dart-define 注入) ---
   static const String appName = '天河網絡';
   static const String appVersion =
-      String.fromEnvironment('APP_VERSION', defaultValue: '3.0.8');
+      String.fromEnvironment('APP_VERSION', defaultValue: '3.0.9');
   static const int appBuildNumber =
-      int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 108);
+      int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 109);
   static const String fullVersionDisplay = 'v$appVersion (Build $appBuildNumber)';
   static const String versionTag = 'v$appVersion';
 

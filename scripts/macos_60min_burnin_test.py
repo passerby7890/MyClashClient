@@ -27,7 +27,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DIST_MAC = PROJECT_ROOT / "dist_mac"
 APP_BUNDLE = DIST_MAC / "Tianhe.app"
-DMG_PATH = DIST_MAC / "TianheNetwork_v3.0.8_macOS.dmg"
+_dmg_files = list(DIST_MAC.glob("TianheNetwork_v*.dmg"))
+DMG_PATH = _dmg_files[0] if _dmg_files else (DIST_MAC / "TianheNetwork_v3.0.9_macOS.dmg")
 REPORT_PATH = PROJECT_ROOT / "mac_60min_burnin_report.json"
 AUDIT_DIR = PROJECT_ROOT / "docs" / "audit_mac"
 AUDIT_DIR.mkdir(parents=True, exist_ok=True)

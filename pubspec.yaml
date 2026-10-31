@@ -2,7 +2,7 @@ name: flclash_v2board_client
 description: FlClash Customized Client (V2Board Dedicated Edition) with DoH Multi-tier Fallback, AES-256 Decryption, Silent Mihomo Injection and In-App Auto Updater.
 publish_to: 'none'
 
-version: 3.0.8+108
+version: 3.0.9+109
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

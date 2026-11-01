@@ -31,10 +31,20 @@ AUDIT_MAC = PROJECT_ROOT / "docs" / "audit_mac"
 DIST_MAC.mkdir(parents=True, exist_ok=True)
 AUDIT_MAC.mkdir(parents=True, exist_ok=True)
 
+class NoAuthRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req and ('blob.core.windows.net' in newurl or 'actionsusercontent' in newurl):
+            new_req.headers.pop('Authorization', None)
+            new_req.headers.pop('authorization', None)
+        return new_req
+
+opener = urllib.request.build_opener(NoAuthRedirect)
+
 def api_get(endpoint):
     url = f"https://api.github.com/repos/{REPO}/{endpoint}" if not endpoint.startswith("http") else endpoint
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with opener.open(req, timeout=30) as resp:
         return json.loads(resp.read().decode('utf-8'))
 
 def get_latest_run_id():
@@ -96,7 +106,7 @@ while True:
                     
                     zip_bytes_stream = io.BytesIO()
                     req = urllib.request.Request(dl_url, headers=HEADERS)
-                    with urllib.request.urlopen(req, timeout=180) as resp:
+                    with opener.open(req, timeout=300) as resp:
                         zip_bytes_stream.write(resp.read())
                     
                     zip_bytes_stream.seek(0)

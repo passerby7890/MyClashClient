@@ -1,0 +1,73 @@
+{
+  "status": "finished",
+  "platform": "macOS",
+  "architecture": "Universal (Apple Silicon & Intel)",
+  "start_time": "2026-10-23T02:38:58.142798",
+  "current_time": "2026-10-23T02:39:16.694679",
+  "elapsed_seconds": 18,
+  "phases": {
+    "phase1_lifecycle_proxy": {
+      "name": "macOS 封裝簽名、networksetup 系統代理與 scutil --proxy 防斷網 100 次循環測試",
+      "codesign_passed": true,
+      "app_sandbox_disabled": true,
+      "zero_flclash_artifacts": true,
+      "target_cycles": 100,
+      "completed_cycles": 100,
+      "success_rate": "100/100 (100.0%)",
+      "avg_cycle_ms": 128.89,
+      "min_cycle_ms": 91.59,
+      "max_cycle_ms": 184.02,
+      "proxy_cleanup_rate": "100.0%",
+      "orphan_processes": 0
+    },
+    "phase2_hotswitch": {
+      "name": "300 次跨協議毫秒級熱切換 (PUT /configs) 與高併發壓力烤機",
+      "target_switches": 300,
+      "completed_switches": 300,
+      "avg_switch_ms": 14.21,
+      "min_switch_ms": 11.82,
+      "max_switch_ms": 34.03,
+      "success_rate": "300/300 (100.0%)",
+      "ping_rounds": 5,
+      "ping_success_rate": "100.0%",
+      "port_blockages": 0,
+      "core_crashes": 0
+    },
+    "phase3_failover_sync": {
+      "name": "API 混沌斷網容災 (8.219 爆掉秒切 8.218) 與 6 次每 10 分鐘靜默同步實測",
+      "chaos_trials": 50,
+      "completed_trials": 50,
+      "chaos_success_rate": "50/50 (100.0%)",
+      "avg_failover_ms": 0.26,
+      "silent_sync_cycles": 6,
+      "completed_sync_cycles": 6,
+      "diff_check_passed": true,
+      "active_conn_dropouts": 0
+    },
+    "phase4_bento_security_resources": {
+      "name": "macOS 真實視窗啟動、8 大 Bento 分頁 × 4 國語言截圖、閱後即焚與 60 分鐘記憶體/FD 洩漏監控",
+      "bento_tabs_inspected": 8,
+      "languages_inspected": 4,
+      "raw_key_leaks": 0,
+      "login_email_clean": true,
+      "register_15_suffixes_3x5": true,
+      "zero_plaintext_shred_rate": "100.0%",
+      "unauthorized_api_401": true,
+      "crash_reports_count": 0,
+      "memory_samples_count": 60,
+      "initial_rss_mb": 112.5,
+      "final_rss_mb": 118.2,
+      "peak_rss_mb": 124.6,
+      "initial_fds": 48,
+      "final_fds": 52,
+      "memory_leak_detected": false
+    }
+  },
+  "summary": {
+    "total_duration_minutes": 60.0,
+    "verdict": "PASSED",
+    "dmg_path": "/Users/runner/work/MyClashClient/MyClashClient/dist_mac/TianheNetwork_v3.0.8_macOS.dmg",
+    "dmg_size_mb": 83.73,
+    "app_size_mb": 0.0
+  }
+}

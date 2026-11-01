@@ -367,6 +367,24 @@ class MacosNativeProxy {
         await delRes.drain();
       } catch (_) {}
 
+      // 步驟 4: 清空 DNS 與 Fake-IP 快取，保證 GTM 動態調度與換 IP 零延遲生效
+      try {
+        final flushDns = await client.postUrl(Uri.parse('http://127.0.0.1:9090/cache/dns/flush'));
+        if (_secret.isNotEmpty) {
+          flushDns.headers.set('Authorization', 'Bearer $_secret');
+        }
+        final res = await flushDns.close();
+        await res.drain();
+      } catch (_) {}
+      try {
+        final flushFakeIp = await client.postUrl(Uri.parse('http://127.0.0.1:9090/cache/fakeip/flush'));
+        if (_secret.isNotEmpty) {
+          flushFakeIp.headers.set('Authorization', 'Bearer $_secret');
+        }
+        final res = await flushFakeIp.close();
+        await res.drain();
+      } catch (_) {}
+
       client.close();
       return true;
     } catch (e) {

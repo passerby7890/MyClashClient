@@ -515,14 +515,14 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
 
               // 同步訂閱按鈕 (精緻科技感膠囊按鈕，點擊同時刷新節點與用戶剩餘流量)
               InkWell(
                 onTap: _isManualSyncing ? null : _handleManualSync,
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                   decoration: BoxDecoration(
                     color: DesktopThemeTokens.neonCyan.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(6),
@@ -554,10 +554,10 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
 
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                 decoration: BoxDecoration(
                   color: isConnected
                       ? DesktopThemeTokens.emeraldGreen.withOpacity(0.12)

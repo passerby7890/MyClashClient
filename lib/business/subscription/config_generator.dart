@@ -96,6 +96,8 @@ class ConfigGenerator {
     buffer.writeln('mode: $validMode');
     buffer.writeln('log-level: silent'); // 零明文原則：核心日誌靜音
     buffer.writeln('ipv6: false');
+    buffer.writeln('tcp-concurrent: true'); // GTM 多 IP 併發競速：自動握手最快健康 IP，0 秒剔除被牆 IP
+    buffer.writeln('unified-delay: true'); // 統一代理真實 RTT 延遲測量
     buffer.writeln('external-controller: 127.0.0.1:$controllerPort');
     final effectiveSecret = controllerSecret ?? secret;
     buffer.writeln('secret: "$effectiveSecret"');
@@ -141,6 +143,7 @@ class ConfigGenerator {
     finalDns['ipv6'] = false;
     finalDns['enhanced-mode'] = 'fake-ip';
     finalDns['fake-ip-range'] = '198.18.0.1/16';
+    finalDns['cache-algorithm'] = 'arc'; // 自適應高效快取算法，即時淘汰過期解析結果
 
     // 清洗 fake-ip-filter (徹底移除 "*" 避免 Fake-IP 全面失效)
     List<String> fakeIpFilters = [];
@@ -174,7 +177,12 @@ class ConfigGenerator {
       finalDns['nameserver'] = ['223.5.5.5', '119.29.29.29', '114.114.114.114'];
     }
     if (finalDns['fallback'] == null || (finalDns['fallback'] as List).isEmpty) {
-      finalDns['fallback'] = ['1.1.1.1', '8.8.8.8'];
+      finalDns['fallback'] = [
+        'https://1.1.1.1/dns-query#PROXY',
+        'https://dns.google/dns-query#PROXY',
+        'https://doh.pub/dns-query',
+        'https://dns.alidns.com/dns-query',
+      ];
     }
     if (finalDns['fallback-filter'] == null) {
       finalDns['fallback-filter'] = {
@@ -310,7 +318,14 @@ class ConfigGenerator {
           newProxies.add(effectiveSelectedName);
         }
 
-        groupMap['proxies'] = newProxies.toList();
+        final list = newProxies.toList();
+        // 核心加固：確保選中節點始終排在策略組第 0 位 (優先於 DIRECT 等保底項)，杜絕默認選中 DIRECT 導致走直連出海被牆！
+        if (list.contains(effectiveSelectedName)) {
+          list.remove(effectiveSelectedName);
+          list.insert(0, effectiveSelectedName);
+        }
+
+        groupMap['proxies'] = list;
         finalProxyGroups.add(groupMap);
       }
     }
@@ -335,18 +350,24 @@ class ConfigGenerator {
       proxyGroup['proxies'] = list;
     }
 
-    // 確保存在 GLOBAL 策略組 (滿足 global 模式切換)
+    // 確保存在 GLOBAL 策略組 (滿足 global 模式切換，首位直連選中節點)
     if (!finalProxyGroups.any((g) => g['name'] == 'GLOBAL')) {
       finalProxyGroups.insert(1, {
         'name': 'GLOBAL',
         'type': 'select',
         'proxies': [
-          'PROXY',
           effectiveSelectedName,
+          'PROXY',
           if (!singleNodeSlice) ...effectiveProxyNames.where((n) => n != effectiveSelectedName),
           'DIRECT',
         ],
       });
+    } else {
+      final globalGroup = finalProxyGroups.firstWhere((g) => g['name'] == 'GLOBAL');
+      final list = (globalGroup['proxies'] as List?)?.map((e) => e.toString()).toList() ?? [];
+      list.remove(effectiveSelectedName);
+      list.insert(0, effectiveSelectedName);
+      globalGroup['proxies'] = list;
     }
 
     buffer.writeln('proxy-groups:');
@@ -389,13 +410,15 @@ class ConfigGenerator {
           .toList();
     }
     if (finalRules.isEmpty) {
-      // 升級後的優質保底規則
+      // 升級後的優質保底規則 (優先以 GEOSITE 分流海外域名，杜絕 GEOIP 觸發海外域名實時 DNS 解析逾時)
       finalRules = [
         'DOMAIN-SUFFIX,local,DIRECT',
         'IP-CIDR,127.0.0.0/8,DIRECT',
         'IP-CIDR,172.16.0.0/12,DIRECT',
         'IP-CIDR,192.168.0.0/16,DIRECT',
         'IP-CIDR,10.0.0.0/8,DIRECT',
+        'GEOSITE,gfw,PROXY',
+        'GEOSITE,geolocation-!cn,PROXY',
         'GEOIP,CN,DIRECT',
         'MATCH,PROXY',
       ];

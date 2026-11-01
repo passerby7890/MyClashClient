@@ -1,20 +1,28 @@
 // lib/presentation/shop/shop_screen.dart
 
 import 'package:flutter/material.dart';
+import '../../business/auth/auth_manager.dart';
+import '../../business/shop/order_model.dart';
 import '../../business/shop/plan_model.dart';
 import '../../business/shop/shop_manager.dart';
+import '../../business/subscription/subscription_engine.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/theme/app_theme.dart';
+import 'order_history_screen.dart';
 import 'order_payment_screen.dart';
 
 /// 會員中心 / 套餐商城介面 (ShopScreen)
 /// 動態串接 V2Board 後台真實套餐資料、更換套餐確認彈窗與訂單支付流程
 class ShopScreen extends StatefulWidget {
   final ShopManager shopManager;
+  final AuthManager? authManager;
+  final SubscriptionEngine? subscriptionEngine;
 
   const ShopScreen({
     super.key,
     required this.shopManager,
+    this.authManager,
+    this.subscriptionEngine,
   });
 
   @override
@@ -25,6 +33,7 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   int _selectedFilterIndex = 0; // 0: 全部, 1: 週期性, 2: 一次性
+  OrderModel? _pendingOrder;
 
   @override
   void initState() {
@@ -40,6 +49,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
     try {
       await widget.shopManager.fetchPlans();
+      await _checkPendingOrder();
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
       if (mounted) {
@@ -48,6 +58,21 @@ class _ShopScreenState extends State<ShopScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  /// 檢查是否存在待支付或開通中的訂單
+  Future<void> _checkPendingOrder() async {
+    try {
+      final orders = await widget.shopManager.fetchOrders();
+      final pendingList = orders.where((o) => o.isPending || o.status == 1).toList();
+      if (mounted) {
+        setState(() {
+          _pendingOrder = pendingList.isNotEmpty ? pendingList.first : null;
+        });
+      }
+    } catch (_) {
+      // 靜默處理
     }
   }
 
@@ -284,23 +309,203 @@ class _ShopScreenState extends State<ShopScreen> {
 
       if (mounted) {
         Navigator.pop(context); // 關閉等待
-        Navigator.of(context).push(
+        final result = await Navigator.of(context).push<bool>(
           MaterialPageRoute(
             builder: (_) => OrderPaymentScreen(
               tradeNo: tradeNo,
               shopManager: widget.shopManager,
+              authManager: widget.authManager,
+              subscriptionEngine: widget.subscriptionEngine,
             ),
           ),
         );
+
+        if (result == true && mounted) {
+          _loadPlans(); // 支付完成，刷新套餐清單與資料
+        }
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // 關閉等待
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${I18nService.instance.t('order_failed_prefix')}: $e')),
-        );
+        final errStr = e.toString();
+        // 判斷是否為「未付款或開通中的訂單」衝突
+        if (errStr.contains('未付款') || errStr.contains('开通中') || errStr.contains('未支付')) {
+          await _handlePendingOrderConflict(
+            plan: plan,
+            period: period,
+            couponCode: couponCode,
+          );
+        } else {
+          final i18n = I18nService.instance;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${i18n.t('order_failed_prefix')}: $e')),
+          );
+        }
       }
     }
+  }
+
+  /// 處理未付款訂單衝突：主動彈出閉環導向對話框 (支援前往支付舊單 或 一鍵取消舊單自動換購新套餐)
+  Future<void> _handlePendingOrderConflict({
+    required PlanModel plan,
+    required String period,
+    String? couponCode,
+  }) async {
+    // 1. 獲取未支付訂單詳細
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    OrderModel? pendingOrder = _pendingOrder;
+    try {
+      final orders = await widget.shopManager.fetchOrders();
+      final pendingList = orders.where((o) => o.isPending || o.status == 1).toList();
+      if (pendingList.isNotEmpty) {
+        pendingOrder = pendingList.first;
+        _pendingOrder = pendingOrder;
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      Navigator.pop(context); // 關閉等待
+    }
+
+    if (!mounted) return;
+
+    final i18n = I18nService.instance;
+
+    // 2. 彈出智慧解決方案對話框
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.amberAccent, size: 26),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                i18n.t('order_conflict_title'),
+                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              i18n.t('order_conflict_desc'),
+              style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amberAccent.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          pendingOrder?.planName ?? i18n.t('order_conflict_default_plan'),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        pendingOrder?.formattedAmount ?? '',
+                        style: const TextStyle(color: AppTheme.cyanAccent, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                  if (pendingOrder?.tradeNo != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${i18n.t('order_conflict_trade_no_prefix')}${pendingOrder!.tradeNo}',
+                      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11, fontFamily: 'Segoe UI'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              i18n.t('order_conflict_action_hint', {'plan': plan.name}),
+              style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12, height: 1.4),
+            ),
+          ],
+        ),
+        actions: [
+          // 按鈕 1: 取消舊單並換購此套餐
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              if (pendingOrder != null) {
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const Center(child: CircularProgressIndicator()),
+                );
+                await widget.shopManager.cancelOrder(pendingOrder.tradeNo);
+                if (mounted) {
+                  Navigator.pop(context); // 關閉等待
+                  // 重新為用戶建立新訂單
+                  _handleCreateOrder(
+                    plan: plan,
+                    period: period,
+                    couponCode: couponCode,
+                  );
+                }
+              }
+            },
+            child: Text(
+              i18n.t('order_conflict_switch_plan'),
+              style: const TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+          // 按鈕 2: 前往支付舊訂單
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1976D2),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              if (pendingOrder != null) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => OrderPaymentScreen(
+                      tradeNo: pendingOrder!.tradeNo,
+                      shopManager: widget.shopManager,
+                      authManager: widget.authManager,
+                      subscriptionEngine: widget.subscriptionEngine,
+                    ),
+                  ),
+                ).then((res) {
+                  if (res == true && mounted) _loadPlans();
+                });
+              }
+            },
+            child: Text(
+              i18n.t('order_conflict_go_pay'),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -329,7 +534,41 @@ class _ShopScreenState extends State<ShopScreen> {
             elevation: 0,
             actions: [
               IconButton(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.receipt_long_outlined, color: Colors.white70),
+                    if (_pendingOrder != null)
+                      Positioned(
+                        top: -2,
+                        right: -2,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.amberAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                tooltip: i18n.t('shop_order_history_tooltip'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => OrderHistoryScreen(
+                        shopManager: widget.shopManager,
+                        authManager: widget.authManager,
+                        subscriptionEngine: widget.subscriptionEngine,
+                      ),
+                    ),
+                  ).then((_) => _loadPlans());
+                },
+              ),
+              IconButton(
                 icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
+                tooltip: i18n.t('shop_reload_tooltip'),
                 onPressed: _loadPlans,
               ),
             ],
@@ -359,6 +598,9 @@ class _ShopScreenState extends State<ShopScreen> {
                           vertical: isDesktop ? 16 : 8,
                         ),
                         children: [
+                          // 待支付訂單主動警示橫幅
+                          _buildPendingOrderBanner(),
+
                           Text(
                             i18n.t('shop_subtitle'),
                             style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.6)),
@@ -403,9 +645,9 @@ class _ShopScreenState extends State<ShopScreen> {
                               physics: const NeverScrollableScrollPhysics(),
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
-                                childAspectRatio: 2.15,
-                                crossAxisSpacing: 14,
-                                mainAxisSpacing: 14,
+                                childAspectRatio: 1.65,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
                               ),
                               itemCount: plans.length,
                               itemBuilder: (ctx, i) => _buildPlanCard(plans[i], isDesktop: true),
@@ -448,10 +690,10 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget _buildPlanCard(PlanModel plan, {bool isDesktop = false}) {
     return Container(
       margin: isDesktop ? EdgeInsets.zero : const EdgeInsets.only(bottom: 18),
-      padding: isDesktop ? const EdgeInsets.all(13) : const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(isDesktop ? 16 : 22),
+        borderRadius: BorderRadius.circular(22),
         border: Border.all(color: AppTheme.darkBorder),
         boxShadow: [
           BoxShadow(
@@ -468,33 +710,33 @@ class _ShopScreenState extends State<ShopScreen> {
           Row(
             children: [
               Container(
-                width: isDesktop ? 36 : 44,
-                height: isDesktop ? 36 : 44,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: const Color(0xFF0EA5E9).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(isDesktop ? 10 : 14),
+                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFF0EA5E9).withOpacity(0.3), width: 1.0),
                 ),
-                child: Icon(Icons.diamond_rounded, color: const Color(0xFF00D2FF), size: isDesktop ? 20 : 24),
+                child: const Icon(Icons.diamond_rounded, color: Color(0xFF00D2FF), size: 24),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       plan.name,
-                      style: TextStyle(
-                        fontSize: isDesktop ? 14 : 16,
+                      style: const TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(
                       '${plan.transferEnable} ${I18nService.instance.t('shop_traffic_unit')}',
                       style: TextStyle(
-                        fontSize: isDesktop ? 11 : 12,
+                        fontSize: 12,
                         color: Colors.white.withOpacity(0.6),
                       ),
                     ),
@@ -503,36 +745,36 @@ class _ShopScreenState extends State<ShopScreen> {
               ),
             ],
           ),
-          SizedBox(height: isDesktop ? 6 : 12),
+          const SizedBox(height: 12),
 
           // 價格展示
           Text(
             plan.formattedDisplayPrice,
-            style: TextStyle(
-              fontSize: isDesktop ? 24 : 30,
+            style: const TextStyle(
+              fontSize: 30,
               fontWeight: FontWeight.w800,
               color: Colors.white,
               fontFamily: 'Segoe UI',
               letterSpacing: -0.5,
             ),
           ),
-          SizedBox(height: isDesktop ? 6 : 10),
+          const SizedBox(height: 10),
 
           // 權益打勾項目清單
           ...plan.features.take(2).map(
                 (f) => Padding(
-                  padding: EdgeInsets.only(bottom: isDesktop ? 3 : 6),
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: AppTheme.successEmerald, size: 14),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.check_circle_rounded, color: AppTheme.successEmerald, size: 15),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           f,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: isDesktop ? 11 : 12, color: Colors.white70),
+                          style: const TextStyle(fontSize: 12, color: Colors.white70),
                         ),
                       ),
                     ],
@@ -540,7 +782,7 @@ class _ShopScreenState extends State<ShopScreen> {
                 ),
               ),
 
-          const Spacer(),
+          isDesktop ? const Spacer() : const SizedBox(height: 14),
 
           // 按鈕組：查看完整權益 + 立即訂閱 (天河科技藍漸層圓角按鈕)
           Row(
@@ -550,13 +792,16 @@ class _ShopScreenState extends State<ShopScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white70,
                     side: const BorderSide(color: AppTheme.darkBorder),
-                    padding: EdgeInsets.symmetric(vertical: isDesktop ? 8 : 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () => _showPlanDetailsModal(plan),
-                  child: Text(
-                    I18nService.instance.t('shop_view_details'),
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: isDesktop ? 11 : 12),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      I18nService.instance.t('shop_view_details'),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                    ),
                   ),
                 ),
               ),
@@ -565,16 +810,16 @@ class _ShopScreenState extends State<ShopScreen> {
                 flex: isDesktop ? 1 : 1,
                 child: InkWell(
                   onTap: () => _showChangePlanConfirmDialog(plan),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    padding: EdgeInsets.symmetric(vertical: isDesktop ? 8 : 12),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xFF0EA5E9), Color(0xFF0284C7)],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF0EA5E9).withOpacity(0.35),
@@ -584,12 +829,16 @@ class _ShopScreenState extends State<ShopScreen> {
                       ],
                     ),
                     alignment: Alignment.center,
-                    child: Text(
-                      I18nService.instance.t('shop_buy_now'),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: isDesktop ? 11 : 13,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        I18nService.instance.t('shop_buy_now'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          letterSpacing: 0.3,
+                        ),
                       ),
                     ),
                   ),
@@ -601,7 +850,6 @@ class _ShopScreenState extends State<ShopScreen> {
       ),
     );
   }
-
 
   void _showPlanDetailsModal(PlanModel plan) {
     showModalBottomSheet(
@@ -662,6 +910,131 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 待支付訂單警示橫幅 (主動提示、支援一鍵去支付或取消訂單)
+  Widget _buildPendingOrderBanner() {
+    if (_pendingOrder == null) return const SizedBox.shrink();
+    final i18n = I18nService.instance;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFB45309).withOpacity(0.35),
+            const Color(0xFFD97706).withOpacity(0.18),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFFBBF24), size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      i18n.t('order_pending_banner_title'),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _pendingOrder!.formattedAmount,
+                        style: const TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${_pendingOrder!.planName ?? i18n.t("order_conflict_default_plan")} (${i18n.t("order_status_pending")})',
+                  style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: AppTheme.darkCard,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  title: Text(i18n.t('order_pending_banner_cancel_title'), style: const TextStyle(color: Colors.white)),
+                  content: Text(i18n.t('order_pending_banner_cancel_desc'), style: TextStyle(color: Colors.white.withOpacity(0.7))),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text(i18n.t('order_pending_banner_keep'), style: TextStyle(color: Colors.white.withOpacity(0.6))),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(i18n.t('order_pending_banner_confirm_cancel'), style: const TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true && mounted) {
+                await widget.shopManager.cancelOrder(_pendingOrder!.tradeNo);
+                _loadPlans();
+              }
+            },
+            child: Text(i18n.t('order_pending_banner_cancel'), style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+          ),
+          const SizedBox(width: 6),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1976D2),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OrderPaymentScreen(
+                    tradeNo: _pendingOrder!.tradeNo,
+                    shopManager: widget.shopManager,
+                    authManager: widget.authManager,
+                    subscriptionEngine: widget.subscriptionEngine,
+                  ),
+                ),
+              ).then((res) {
+                if (res == true && mounted) _loadPlans();
+              });
+            },
+            child: Text(i18n.t('order_pending_banner_pay'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }

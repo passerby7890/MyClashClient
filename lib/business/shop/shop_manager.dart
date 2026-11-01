@@ -17,17 +17,10 @@ class ShopManager {
   List<PlanModel> get plans => _plans;
   List<PaymentMethodModel> get paymentMethods => _paymentMethods;
 
-  void setPlansForTesting(List<PlanModel> plans) {
-    _plans = plans;
-  }
-
   ShopManager({required this.dioClient});
 
   /// 1. 獲取所有可用套餐
-  Future<List<PlanModel>> fetchPlans({bool forceRefresh = false}) async {
-    if (_plans.isNotEmpty && !forceRefresh) {
-      return _plans;
-    }
+  Future<List<PlanModel>> fetchPlans() async {
     try {
       final response = await dioClient.dio.get('/api/v1/user/plan/fetch');
       final data = response.data['data'];
@@ -164,5 +157,38 @@ class ShopManager {
     } on DioException catch (e) {
       throw Exception(e.response?.data?['message'] ?? '獲取歷史訂單失敗');
     }
+  }
+
+  /// 8. 輕量/快速檢查訂單狀態 (供客戶端定時輪詢與前台喚醒檢測)
+  /// 回傳 status: 0=待支付, 1=開通中, 2=已取消, 3=已完成
+  Future<int> checkOrderStatus(String tradeNo) async {
+    try {
+      final response = await dioClient.dio.get(
+        '/api/v1/user/order/check',
+        queryParameters: {'trade_no': tradeNo},
+      );
+      final respData = response.data;
+      if (respData is Map && respData['data'] != null) {
+        final d = respData['data'];
+        if (d is int) return d;
+        if (d is bool) return d ? 3 : 0;
+        final parsed = int.tryParse(d.toString());
+        if (parsed != null) return parsed;
+      }
+    } catch (_) {
+      // 若 check 介面未開啟或自定義異常，平滑降級為 getOrderDetail
+    }
+
+    try {
+      final order = await getOrderDetail(tradeNo);
+      return order.status;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// 測試用：注入套餐列表
+  void setPlansForTesting(List<PlanModel> plans) {
+    _plans = plans;
   }
 }

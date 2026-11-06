@@ -14,7 +14,7 @@ BUILD_OUTPUT="$PROJECT_ROOT/build/macos/Build/Products/Release"
 APP_NAME="Tianhe"
 APP_BUNDLE="$BUILD_OUTPUT/$APP_NAME.app"
 APP_VER=$(grep 'version:' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | awk '{print $2}' | cut -d'+' -f1)
-if [ -z "$APP_VER" ]; then APP_VER="3.0.9"; fi
+if [ -z "$APP_VER" ]; then APP_VER="3.1.0"; fi
 DMG_NAME="TianheNetwork_v${APP_VER}_macOS.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 MIHOMO_DIR="$PROJECT_ROOT/tools/mihomo"
@@ -32,9 +32,9 @@ rm -f "$DIST_DIR"/*.dmg "$DIST_DIR"/*.app
 # 1. 檢查並獲取 mihomo-darwin 內核 (Universal Apple Silicon + Intel)
 mkdir -p "$MIHOMO_DIR"
 if [ ! -f "$MIHOMO_BIN" ]; then
-    echo "⬇️ 正在下載官方 Mihomo Darwin 雙架構內核 (v1.19.32)..."
-    ARM64_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-darwin-arm64-v1.19.32.gz"
-    AMD64_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-darwin-amd64-v1.19.32.gz"
+    echo "⬇️ 正在下載官方 Mihomo Darwin 雙架構內核 (v1.19.33)..."
+    ARM64_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-darwin-arm64-v1.19.33.gz"
+    AMD64_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-darwin-amd64-v1.19.33.gz"
 
     curl -L -s "$ARM64_URL" -o "$MIHOMO_DIR/mihomo-arm64.gz"
     curl -L -s "$AMD64_URL" -o "$MIHOMO_DIR/mihomo-amd64.gz"
@@ -69,7 +69,9 @@ echo "🔨 正在編譯 macOS 獨立應用程式 (Release + Obfuscate)..."
 mkdir -p "$PROJECT_ROOT/build/macos_symbols"
 flutter build macos --release \
     --obfuscate \
-    --split-debug-info="$PROJECT_ROOT/build/macos_symbols"
+    --split-debug-info="$PROJECT_ROOT/build/macos_symbols" \
+    --dart-define=APP_VERSION=3.1.0 \
+    --dart-define=APP_BUILD_NUMBER=110
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "❌ 找不到編譯產物: $APP_BUNDLE"

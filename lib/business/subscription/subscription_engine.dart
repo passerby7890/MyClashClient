@@ -812,6 +812,14 @@ class SubscriptionEngine extends ChangeNotifier {
       relativePath = '$relativePath${sep}token=$effectiveToken';
     }
 
+    // 去除第三方 UA 特徵後，強制確保帶入 flag=meta 參數，保證 V2Board/Xboard 下發 Mihomo/Clash YAML 格式配置
+    if (relativePath.contains('flag=clash')) {
+      relativePath = relativePath.replaceAll('flag=clash', 'flag=meta');
+    } else if (!relativePath.contains('flag=')) {
+      final sep = relativePath.contains('?') ? '&' : '?';
+      relativePath = '$relativePath${sep}flag=meta';
+    }
+
     // 寫入 L2 加密金庫保存
     try {
       await _storageService.saveCachedSubscribePath(relativePath);
@@ -819,6 +827,16 @@ class SubscriptionEngine extends ChangeNotifier {
 
     return relativePath;
   }
+
+  @visibleForTesting
+  Future<String> resolveSubscribePathForTesting({
+    String? customSubscribeUrl,
+    String? token,
+  }) =>
+      _resolveAndVaultSubscribePath(
+        customSubscribeUrl: customSubscribeUrl,
+        token: token,
+      );
 
   /// Happy Eyeballs 雙層容災訂閱下載核心：
   /// 第一層：當前主機 (currentApiDomain) 2.5 秒極速直連通道
@@ -886,13 +904,20 @@ class SubscriptionEngine extends ChangeNotifier {
     if (cleanHost.endsWith('/api/v1')) {
       cleanHost = cleanHost.substring(0, cleanHost.length - 7);
     }
-    final targetUrl = '$cleanHost$relativePath';
+    var finalPath = relativePath;
+    if (finalPath.contains('flag=clash')) {
+      finalPath = finalPath.replaceAll('flag=clash', 'flag=meta');
+    } else if (!finalPath.contains('flag=')) {
+      final sep = finalPath.contains('?') ? '&' : '?';
+      finalPath = '$finalPath${sep}flag=meta';
+    }
+    final targetUrl = '$cleanHost$finalPath';
 
     final response = await _dioClient.dio.get<String>(
       targetUrl,
       options: Options(
         headers: {
-          'User-Agent': 'ClashMeta/1.18.0 (Tianhe Network Client)',
+          'User-Agent': 'TianheNetwork/${AppConstants.appVersion} (macOS)',
         },
         responseType: ResponseType.plain,
         connectTimeout: timeout,

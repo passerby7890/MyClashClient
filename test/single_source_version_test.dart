@@ -8,10 +8,10 @@ import 'package:flclash_v2board_client/infrastructure/updater/in_app_updater.dar
 void main() {
   group('🏛️ 全系統版本號單一事實來源 (Single Source of Truth) 驗證測試', () {
     test('1. AppConstants 全域版本變數定義正確且對齊 pubspec.yaml', () {
-      expect(AppConstants.appVersion, equals('3.0.9'));
-      expect(AppConstants.appBuildNumber, equals(109));
-      expect(AppConstants.fullVersionDisplay, equals('v3.0.9 (Build 109)'));
-      expect(AppConstants.versionTag, equals('v3.0.9'));
+      expect(AppConstants.appVersion, equals('3.1.0'));
+      expect(AppConstants.appBuildNumber, equals(110));
+      expect(AppConstants.fullVersionDisplay, equals('v3.1.0 (Build 110)'));
+      expect(AppConstants.versionTag, equals('v3.1.0'));
     });
 
     test('2. InAppUpdater checkForUpdates 預設基準版本自動對齊 AppConstants.appVersion', () async {
@@ -19,17 +19,17 @@ void main() {
       final remoteConfig = RemoteConfigModel(
         apiDomain: 'https://api.test.com',
         backupApiDomains: [],
-        latestVersion: '3.0.9',
+        latestVersion: '3.1.0',
         minVersion: '3.0.0',
       );
 
       final result = await updater.checkForUpdates(remoteConfig: remoteConfig);
-      // 當前版本必須為 3.0.9，而非寫死的 1.0.0
+      // 當前版本必須為 3.1.0，而非寫死的 1.0.0
       expect(result.currentVersion, equals(AppConstants.appVersion));
       expect(result.hasUpdate, isFalse);
     });
 
-    test('3. 遠端配置比對邏輯：遠端為舊版 (1.0.0) 時，本地 (3.0.9) 絕不誤觸更新', () async {
+    test('3. 遠端配置比對邏輯：遠端為舊版 (1.0.0) 時，本地 (3.1.0) 絕不誤觸更新', () async {
       final updater = InAppUpdater();
       final remoteConfig = RemoteConfigModel(
         apiDomain: 'https://api.test.com',
@@ -39,26 +39,26 @@ void main() {
       );
 
       final result = await updater.checkForUpdates(remoteConfig: remoteConfig);
-      expect(result.currentVersion, equals('3.0.9'));
+      expect(result.currentVersion, equals('3.1.0'));
       expect(result.hasUpdate, isFalse);
     });
 
-    test('4. 遠端配置比對邏輯：遠端釋出新版 (3.1.0) 時，精準識別有新版本可升級', () async {
+    test('4. 遠端配置比對邏輯：遠端釋出新版 (3.2.0) 時，精準識別有新版本可升級', () async {
       final updater = InAppUpdater();
       final remoteConfig = RemoteConfigModel(
         apiDomain: 'https://api.test.com',
         backupApiDomains: [],
-        latestVersion: '3.1.0',
+        latestVersion: '3.2.0',
         minVersion: '3.0.0',
         changelog: '效能優化與 Bug 修復',
-        apkUrl: 'https://dl.test.com/app-v3.1.0.apk',
+        apkUrl: 'https://dl.test.com/app-v3.2.0.apk',
       );
 
       final result = await updater.checkForUpdates(remoteConfig: remoteConfig);
-      expect(result.currentVersion, equals('3.0.9'));
+      expect(result.currentVersion, equals('3.1.0'));
       expect(result.hasUpdate, isTrue);
       expect(result.isForceUpdate, isFalse);
-      expect(result.latestVersion, equals('3.1.0'));
+      expect(result.latestVersion, equals('3.2.0'));
     });
 
     test('5. 遠端配置強制更新比對：當前版本小於 min_version 時觸發阻斷級強制更新', () async {
@@ -66,14 +66,14 @@ void main() {
       final remoteConfig = RemoteConfigModel(
         apiDomain: 'https://api.test.com',
         backupApiDomains: [],
-        latestVersion: '3.1.0',
-        minVersion: '3.1.0', // minVersion > 3.0.9
+        latestVersion: '3.2.0',
+        minVersion: '3.2.0', // minVersion > 3.1.0
         changelog: '重大安全性協議升級',
-        apkUrl: 'https://dl.test.com/app-v3.1.0.apk',
+        apkUrl: 'https://dl.test.com/app-v3.2.0.apk',
       );
 
       final result = await updater.checkForUpdates(remoteConfig: remoteConfig);
-      expect(result.currentVersion, equals('3.0.9'));
+      expect(result.currentVersion, equals('3.1.0'));
       expect(result.hasUpdate, isTrue);
       expect(result.isForceUpdate, isTrue);
     });

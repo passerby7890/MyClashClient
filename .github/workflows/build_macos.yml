@@ -156,15 +156,15 @@ jobs:
       - name: "9. 💿 上傳 macOS DMG 建構產物"
         uses: actions/upload-artifact@v4
         with:
-          name: TianheNetwork_v3.0.9_macOS
-          path: dist_mac/TianheNetwork_v3.0.9_macOS.dmg
+          name: TianheNetwork_v3.1.0_macOS
+          path: dist_mac/TianheNetwork_v3.1.0_macOS.dmg
           if-no-files-found: error
 
       - name: "10. 🏷️ 自動發布 Release (若觸發 tag)"
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist_mac/TianheNetwork_v3.0.9_macOS.dmg
+          files: dist_mac/TianheNetwork_v3.1.0_macOS.dmg
           name: Tianhe Network macOS Client ${{ github.ref_name }}
           body: |
             ## 🍎 天河網絡 (Tianhe Network) macOS 旗艦版

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_sanitizer.dart';
 
 /// 我的工單 (TicketScreen)
 /// 統一深色科技風 (Dark Tech Material 3)，與主控台及個人中心風格完全一致
@@ -50,7 +51,7 @@ class _TicketScreenState extends State<TicketScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = ErrorSanitizer.sanitize(e);
           _isLoading = false;
         });
       }
@@ -73,7 +74,8 @@ class _TicketScreenState extends State<TicketScreen> {
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: Container(
-              padding: const EdgeInsets.all(22),
+              constraints: const BoxConstraints(maxWidth: 500),
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,
                 borderRadius: BorderRadius.circular(24),
@@ -137,10 +139,10 @@ class _TicketScreenState extends State<TicketScreen> {
                         isExpanded: true,
                         dropdownColor: AppTheme.darkCard,
                         style: const TextStyle(color: Colors.white, fontSize: 14),
-                        items: const [
-                          DropdownMenuItem(value: 1, child: Text('優先級：低')),
-                          DropdownMenuItem(value: 2, child: Text('優先級：中')),
-                          DropdownMenuItem(value: 3, child: Text('優先級：高')),
+                        items: [
+                          DropdownMenuItem(value: 1, child: Text(I18nService.instance.t('ticket_priority_low'))),
+                          DropdownMenuItem(value: 2, child: Text(I18nService.instance.t('ticket_priority_med'))),
+                          DropdownMenuItem(value: 3, child: Text(I18nService.instance.t('ticket_priority_high'))),
                         ],
                         onChanged: (val) {
                           if (val != null) setDialogState(() => priority = val);
@@ -201,7 +203,7 @@ class _TicketScreenState extends State<TicketScreen> {
                                 final message = contentController.text.trim();
                                 if (title.isEmpty || message.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('請填寫工單標題與內容')),
+                                    SnackBar(content: Text(I18nService.instance.t('ticket_fill_fields'))),
                                   );
                                   return;
                                 }
@@ -220,14 +222,14 @@ class _TicketScreenState extends State<TicketScreen> {
                                   _fetchTickets();
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('工單創建成功！')),
+                                      SnackBar(content: Text(I18nService.instance.t('ticket_created_success'))),
                                     );
                                   }
                                 } catch (e) {
                                   setDialogState(() => isSubmitting = false);
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('創建失敗: $e')),
+                                      SnackBar(content: Text('${I18nService.instance.t('ticket_create_failed_prefix')}${ErrorSanitizer.sanitize(e)}')),
                                     );
                                   }
                                 }
@@ -272,7 +274,12 @@ class _TicketScreenState extends State<TicketScreen> {
               ),
             ],
           ),
-          body: _buildBody(),
+          body: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: _buildBody(),
+            ),
+          ),
           floatingActionButton: FloatingActionButton.extended(
             backgroundColor: AppTheme.cyanAccent,
             foregroundColor: Colors.black,
@@ -326,30 +333,35 @@ class _TicketScreenState extends State<TicketScreen> {
             const SizedBox(height: 14),
             Text(I18nService.instance.t('ticket_empty'), style: TextStyle(fontSize: 15, color: Colors.white.withOpacity(0.6))),
             const SizedBox(height: 8),
-            Text('如有使用疑問，歡迎點擊右下方按鈕創建工單', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4))),
+            Text(I18nService.instance.t('ticket_empty_hint'), style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.4))),
           ],
         ),
       );
     }
 
+    final i18n = I18nService.instance;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: _tickets.length,
       itemBuilder: (context, index) {
         final ticket = _tickets[index];
         final id = ticket['id'];
-        final subject = ticket['subject'] ?? '工單 #$id';
+        final subject = ticket['subject'] ?? '#$id';
         final status = ticket['status'] ?? 0; // 0: 待處理/處理中, 1: 已關閉
         final replyStatus = ticket['reply_status'] ?? 0;
         final level = ticket['level'] ?? 1;
 
         final isClosed = status == 1;
-        final statusText = isClosed ? '已關閉' : (replyStatus == 1 ? '已回覆' : '處理中');
+        final statusText = isClosed
+            ? i18n.t('ticket_status_closed')
+            : (replyStatus == 1 ? i18n.t('ticket_status_replied') : i18n.t('ticket_status_pending'));
         final statusColor = isClosed
             ? Colors.grey
             : (replyStatus == 1 ? const Color(0xFF10B981) : AppTheme.cyanAccent);
 
-        final priorityText = level == 3 ? '高' : (level == 2 ? '中' : '低');
+        final priorityLabel = level == 3
+            ? i18n.t('ticket_priority_high')
+            : (level == 2 ? i18n.t('ticket_priority_med') : i18n.t('ticket_priority_low'));
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -386,7 +398,7 @@ class _TicketScreenState extends State<TicketScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '優先級: $priorityText',
+                      priorityLabel,
                       style: const TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/updater/in_app_updater.dart';
 import '../../business/auth/auth_manager.dart';
@@ -130,7 +131,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       if (mounted) {
         setState(() {
           _hasError = true;
-          _errorMessage = e.toString();
+          _errorMessage = ErrorSanitizer.sanitize(e);
           _statusText = i18n.t('splash_init_failed');
         });
       }
@@ -206,15 +207,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      I18nService.instance.t('splash_slogan'),
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 13,
-                        letterSpacing: 1.0,
                       ),
                     ),
                   ],

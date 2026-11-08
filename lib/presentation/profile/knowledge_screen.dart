@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_sanitizer.dart';
 
 /// 文檔中心 (KnowledgeScreen)
 /// 1:1 對齊截圖 5：分類文件夾卡片、藍色頂部標籤條、文章數量徽章、文檔列表與詳情檢視
@@ -56,7 +57,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = ErrorSanitizer.sanitize(e);
           _isLoading = false;
         });
       }
@@ -130,11 +131,41 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   }
 
   Future<void> _openArticleReader(Map<String, dynamic> article) async {
-    final title = article['title']?.toString() ?? '文檔詳情';
+    final title = article['title']?.toString() ?? I18nService.instance.t('docs_untitled');
     final articleId = article['id'];
     final date = _formatTimestamp(article['updated_at'] ?? article['created_at']);
+    final isWide = MediaQuery.of(context).size.width > 700;
 
-    // 顯示載入等待 BottomSheet
+    if (isWide) {
+      await showDialog(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.65),
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 780, maxHeight: 680),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppTheme.darkBorder, width: 1.2),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _ArticleDetailModal(
+              dioClient: widget.dioClient,
+              articleId: articleId,
+              fallbackTitle: title,
+              fallbackDate: date,
+              initialBody: article['body']?.toString(),
+              stripHtml: _stripHtml,
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // 行動端顯示載入等待 BottomSheet
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -175,7 +206,12 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 880),
+          child: _buildBody(),
+        ),
+      ),
     );
   }
 
@@ -202,7 +238,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('重新整理', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Text(I18nService.instance.t('refresh'), style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -217,7 +253,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           children: [
             Icon(Icons.menu_book_rounded, size: 64, color: Colors.white.withOpacity(0.2)),
             const SizedBox(height: 12),
-            Text('暫無文檔資料', style: TextStyle(fontSize: 15, color: Colors.white.withOpacity(0.5))),
+            Text(I18nService.instance.t('docs_empty'), style: TextStyle(fontSize: 15, color: Colors.white.withOpacity(0.5))),
           ],
         ),
       );

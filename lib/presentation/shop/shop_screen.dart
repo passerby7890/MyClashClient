@@ -8,6 +8,7 @@ import '../../business/shop/shop_manager.dart';
 import '../../business/subscription/subscription_engine.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_sanitizer.dart';
 import 'order_history_screen.dart';
 import 'order_payment_screen.dart';
 
@@ -54,7 +55,7 @@ class _ShopScreenState extends State<ShopScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = ErrorSanitizer.sanitize(e);
           _isLoading = false;
         });
       }
@@ -338,7 +339,7 @@ class _ShopScreenState extends State<ShopScreen> {
         } else {
           final i18n = I18nService.instance;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${i18n.t('order_failed_prefix')}: $e')),
+            SnackBar(content: Text('${i18n.t('order_failed_prefix')}: ${ErrorSanitizer.sanitize(e)}')),
           );
         }
       }
@@ -458,15 +459,24 @@ class _ShopScreenState extends State<ShopScreen> {
                   barrierDismissible: false,
                   builder: (_) => const Center(child: CircularProgressIndicator()),
                 );
-                await widget.shopManager.cancelOrder(pendingOrder.tradeNo);
-                if (mounted) {
-                  Navigator.pop(context); // 關閉等待
-                  // 重新為用戶建立新訂單
-                  _handleCreateOrder(
-                    plan: plan,
-                    period: period,
-                    couponCode: couponCode,
-                  );
+                try {
+                  await widget.shopManager.cancelOrder(pendingOrder.tradeNo);
+                  if (mounted) {
+                    Navigator.pop(context); // 關閉等待
+                    // 重新為用戶建立新訂單
+                    _handleCreateOrder(
+                      plan: plan,
+                      period: period,
+                      couponCode: couponCode,
+                    );
+                  }
+                } catch (err) {
+                  if (mounted) {
+                    Navigator.pop(context); // 關閉等待
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(ErrorSanitizer.sanitize(err))),
+                    );
+                  }
                 }
               }
             },
@@ -645,7 +655,7 @@ class _ShopScreenState extends State<ShopScreen> {
                               physics: const NeverScrollableScrollPhysics(),
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
-                                childAspectRatio: 1.65,
+                                childAspectRatio: 1.45,
                                 crossAxisSpacing: 16,
                                 mainAxisSpacing: 16,
                               ),

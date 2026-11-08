@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/updater/in_app_updater.dart';
 
 /// 應用程式更新彈窗 (支援強制更新模式與即時下載進度條)
@@ -59,6 +60,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
     try {
       await widget.updater.downloadAndInstall(
         downloadUrl: url,
+        expectedSha256: widget.updateInfo.sha256,
         onProgress: (p, msg) {
           if (mounted) {
             setState(() {
@@ -72,7 +74,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (mounted) {
         setState(() {
           _isDownloading = false;
-          _errorMessage = e.toString();
+          _errorMessage = ErrorSanitizer.sanitize(e);
         });
       }
     }

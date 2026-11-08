@@ -24,6 +24,16 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    let windowChannel = FlutterMethodChannel(name: "tianhe/window", binaryMessenger: flutterViewController.engine.binaryMessenger)
+    windowChannel.setMethodCallHandler { [weak self] (call, result) in
+      if call.method == "setWindowTitle", let title = call.arguments as? String {
+        self?.title = title
+        result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     super.awakeFromNib()
   }
 }

@@ -3,8 +3,10 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import '../../core/i18n/i18n_service.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/storage/secure_storage_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
 import '../../presentation/dashboard/widgets/customer_service_modal.dart';
 import 'auth_state.dart';
@@ -62,7 +64,6 @@ class AuthManager extends ChangeNotifier {
               .where((e) => e.isNotEmpty)
               .toList();
           if (customList.isNotEmpty) {
-            // 依據 16 大主流熱門度權重排序 (常用郵箱靠前)
             customList.sort((a, b) {
               final idxA = defaultEmailWhitelist.indexOf(a);
               final idxB = defaultEmailWhitelist.indexOf(b);
@@ -103,7 +104,6 @@ class AuthManager extends ChangeNotifier {
       return;
     }
 
-    // 嘗試從本地安全快取讀取用戶資料，以便離線時先進入首頁
     final cachedUserJson = await _storageService.getUserInfoJson();
     UserModel? cachedUser;
     if (cachedUserJson != null) {
@@ -115,9 +115,23 @@ class AuthManager extends ChangeNotifier {
     try {
       final user = await fetchUserInfo();
       _setState(AuthState.authenticated(user: user, token: token));
-    } catch (e) {
+    } on DioException catch (e) {
+      // 若後端明確回傳 401 或 403「未登录或登陆已过期」，絕不可降級載入舊快取進入首頁！
+      if (ErrorSanitizer.isSessionExpiredResponse(
+        e.response?.statusCode,
+        e.response?.data,
+      )) {
+        await _storageService.clearAll();
+        _setState(AuthState.unauthenticated());
+        return;
+      }
       if (cachedUser != null) {
-        // 伺服器短暫不可達但本機有快取，仍允許進入
+        _setState(AuthState.authenticated(user: cachedUser, token: token));
+      } else {
+        _setState(AuthState.unauthenticated());
+      }
+    } catch (_) {
+      if (cachedUser != null) {
         _setState(AuthState.authenticated(user: cachedUser, token: token));
       } else {
         _setState(AuthState.unauthenticated());
@@ -125,7 +139,7 @@ class AuthManager extends ChangeNotifier {
     }
   }
 
-  /// 使用者登入 (對接 V2Board: POST /api/v1/passport/auth/login)
+  /// 使用者登入 (POST /api/v1/passport/auth/login)
   Future<UserModel> login({
     required String email,
     required String password,
@@ -147,7 +161,7 @@ class AuthManager extends ChangeNotifier {
       if (respData is Map<String, dynamic>) {
         final data = respData['data'];
         if (data is Map<String, dynamic>) {
-          // V2Board 核心規則：auth_data 為 JWT 認證憑據，token 為訂閱金鑰；認證優先使用 auth_data
+          // auth_data 為 JWT 認證憑據，token 為訂閱金鑰；認證優先使用 auth_data
           token = (data['auth_data'] ?? data['token']) as String?;
         } else if (data is String) {
           token = data;
@@ -155,13 +169,10 @@ class AuthManager extends ChangeNotifier {
       }
 
       if (token == null || token.isEmpty) {
-        throw const FormatException('登入成功但後端未返回有效的 Token 憑證');
+        throw const FormatException('登入成功但未返回有效憑證');
       }
 
-      // 儲存 JWT Token
       await _storageService.saveToken(token);
-
-      // 獲取使用者資料與流量配額
       final user = await fetchUserInfo();
 
       _setState(AuthState.authenticated(user: user, token: token));
@@ -171,13 +182,13 @@ class AuthManager extends ChangeNotifier {
       _setState(AuthState.error(message));
       throw Exception(message);
     } catch (e) {
-      final message = e.toString();
+      final message = ErrorSanitizer.sanitize(e);
       _setState(AuthState.error(message));
       throw Exception(message);
     }
   }
 
-  /// 使用者註冊 (對接 V2Board: POST /api/v1/passport/auth/register)
+  /// 使用者註冊 (POST /api/v1/passport/auth/register)
   Future<UserModel> register({
     required String email,
     required String password,
@@ -209,11 +220,11 @@ class AuthManager extends ChangeNotifier {
       if (respData is Map<String, dynamic>) {
         final data = respData['data'];
         if (data is Map<String, dynamic>) {
-          token = (data['token'] ?? data['auth_data']) as String?;
+          // 認證必須優先使用 auth_data (JWT)，不可誤存 32 位訂閱 token！
+          token = (data['auth_data'] ?? data['token']) as String?;
         }
       }
 
-      // 若註冊後後端未直接回傳 Token，自動執行登入
       if (token == null || token.isEmpty) {
         return await login(email: email, password: password);
       }
@@ -227,13 +238,13 @@ class AuthManager extends ChangeNotifier {
       _setState(AuthState.error(message));
       throw Exception(message);
     } catch (e) {
-      final message = e.toString();
+      final message = ErrorSanitizer.sanitize(e);
       _setState(AuthState.error(message));
       throw Exception(message);
     }
   }
 
-  /// 發送郵箱驗證碼 (對接 V2Board: POST /api/v1/passport/comm/sendEmailVerify)
+  /// 發送郵箱驗證碼 (POST /api/v1/passport/comm/sendEmailVerify)
   Future<bool> sendEmailVerify(String email) async {
     try {
       final response = await _dioClient.post(
@@ -252,11 +263,11 @@ class AuthManager extends ChangeNotifier {
       final message = _extractErrorMessage(e);
       throw Exception(message);
     } catch (e) {
-      throw Exception(e.toString());
+      throw Exception(ErrorSanitizer.sanitize(e));
     }
   }
 
-  /// 重設/忘記密碼 (對接 V2Board: POST /api/v1/passport/auth/forget)
+  /// 重設/忘記密碼 (POST /api/v1/passport/auth/forget)
   Future<bool> resetPassword({
     required String email,
     required String password,
@@ -281,12 +292,39 @@ class AuthManager extends ChangeNotifier {
       final message = _extractErrorMessage(e);
       throw Exception(message);
     } catch (e) {
-      throw Exception(e.toString());
+      throw Exception(ErrorSanitizer.sanitize(e));
     }
   }
 
+  /// 檢查相對訂閱路徑是否遭誤注入 JWT Token 污染
+  static bool isPoisonedSubscribePath(String? path) {
+    if (path == null || path.trim().isEmpty) return true;
+    try {
+      final dummyBase = path.startsWith('/')
+          ? 'http://dummy'
+          : (path.startsWith('http') ? '' : 'http://dummy/');
+      final uri = Uri.parse('$dummyBase$path');
+      final subToken = uri.queryParameters['token'];
+      if (subToken == null || subToken.trim().isEmpty) return true;
+      return isJwtCredential(subToken);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 判斷字串是否為 JWT 會話憑證 (auth_data) 而非 32 位訂閱金鑰
+  static bool isJwtCredential(String? value) {
+    if (value == null) return false;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    if (trimmed.toLowerCase().startsWith('bearer ')) return true;
+    if (trimmed.startsWith('eyJ') && trimmed.contains('.')) return true;
+    if (trimmed.split('.').length == 3 && trimmed.length > 48) return true;
+    return false;
+  }
+
   /// 獲取最新個人資料與剩餘流量 (GET /api/v1/user/info)
-  Future<UserModel> fetchUserInfo() async {
+  Future<UserModel> fetchUserInfo({bool ignoreCachedSubscribeFallback = false}) async {
     if (_state.user != null && _mockTrafficLogs != null) {
       return _state.user!;
     }
@@ -298,7 +336,7 @@ class AuthManager extends ChangeNotifier {
       if (respData is Map<String, dynamic>) {
         final data = respData['data'];
         if (data is Map<String, dynamic>) {
-          dataMap = data;
+          dataMap = Map<String, dynamic>.from(data);
         }
       }
 
@@ -306,14 +344,17 @@ class AuthManager extends ChangeNotifier {
         throw const FormatException('無法解析使用者資訊回應資料');
       }
 
-      // 嘗試獲取獨立訂閱配置資訊 (包括專用 subscribe_url, u, d, 流量上限與套餐資訊)
+      if (dataMap['token'] != null && isJwtCredential(dataMap['token']?.toString())) {
+        dataMap.remove('token');
+      }
+
       String? subscribeUrl;
       try {
         final subResp = await _dioClient.get('/api/v1/user/getSubscribe');
         if (subResp.data is Map && subResp.data['data'] is Map) {
           final subData = subResp.data['data'] as Map<String, dynamic>;
           subscribeUrl = subData['subscribe_url'] as String?;
-          if (subData['token'] != null) {
+          if (subData['token'] != null && !isJwtCredential(subData['token'].toString())) {
             dataMap['token'] = subData['token'];
           }
           if (subData['u'] != null) {
@@ -335,11 +376,35 @@ class AuthManager extends ChangeNotifier {
             }
           }
         }
-      } catch (e) {
-        debugPrint('[AuthManager] /api/v1/user/getSubscribe 獲取失敗: $e，嘗試從本地 L2 加密金庫還原 subscribe_path');
-        final cachedPath = await _storageService.getCachedSubscribePath();
-        if (cachedPath != null && cachedPath.isNotEmpty) {
-          subscribeUrl = cachedPath;
+      } on DioException catch (subDioErr) {
+        if (ErrorSanitizer.isSessionExpiredResponse(
+          subDioErr.response?.statusCode,
+          subDioErr.response?.data,
+        )) {
+          rethrow;
+        }
+        SafeLog.d('[AuthManager] getSubscribe 暫時不可達，檢查本地 L2 金庫快取路徑');
+        if (!ignoreCachedSubscribeFallback) {
+          final cachedPath = await _storageService.getCachedSubscribePath();
+          if (cachedPath != null && cachedPath.isNotEmpty) {
+            if (!isPoisonedSubscribePath(cachedPath)) {
+              subscribeUrl = cachedPath;
+            } else {
+              await _storageService.deleteCachedSubscribePath();
+            }
+          }
+        }
+      } catch (_) {
+        SafeLog.d('[AuthManager] getSubscribe 回應異常，檢查本地 L2 金庫快取路徑');
+        if (!ignoreCachedSubscribeFallback) {
+          final cachedPath = await _storageService.getCachedSubscribePath();
+          if (cachedPath != null && cachedPath.isNotEmpty) {
+            if (!isPoisonedSubscribePath(cachedPath)) {
+              subscribeUrl = cachedPath;
+            } else {
+              await _storageService.deleteCachedSubscribePath();
+            }
+          }
         }
       }
 
@@ -353,8 +418,10 @@ class AuthManager extends ChangeNotifier {
             relativeSubscribePath = '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
           } catch (_) {}
         }
-        await _storageService.saveCachedSubscribePath(relativeSubscribePath);
-        dataMap['subscribe_url'] = relativeSubscribePath;
+        if (!isPoisonedSubscribePath(relativeSubscribePath)) {
+          await _storageService.saveCachedSubscribePath(relativeSubscribePath);
+          dataMap['subscribe_url'] = relativeSubscribePath;
+        }
       }
 
       final user = UserModel.fromJson(dataMap);
@@ -364,15 +431,24 @@ class AuthManager extends ChangeNotifier {
         _setState(_state.copyWith(user: user));
       }
 
-      // 觸發流量預警檢測 (TODO-03)
       try {
         TrafficNotificationService.instance.checkTrafficAlert(user);
       } catch (_) {}
 
       return user;
-    } catch (e) {
-      // ignore: avoid_print
-      print('[AuthManager] 獲取使用者資訊失敗: $e');
+    } on DioException catch (e) {
+      if (ErrorSanitizer.isSessionExpiredResponse(
+        e.response?.statusCode,
+        e.response?.data,
+      )) {
+        if (_state.isAuthenticated) {
+          handleUnauthorized();
+        }
+      }
+      SafeLog.d('[AuthManager] 獲取使用者資訊未完成');
+      rethrow;
+    } catch (_) {
+      SafeLog.d('[AuthManager] 獲取使用者資訊解析異常');
       rethrow;
     }
   }
@@ -400,7 +476,7 @@ class AuthManager extends ChangeNotifier {
         },
       );
       final respData = response.data;
-      debugPrint('[AuthManager] fetchTrafficLogs 狀態碼: ${response.statusCode}, 根資料型態: ${respData.runtimeType}');
+      SafeLog.d('[AuthManager] fetchTrafficLogs 狀態碼: ${response.statusCode}');
 
       List<dynamic>? rawList;
       if (respData is List) {
@@ -410,7 +486,6 @@ class AuthManager extends ChangeNotifier {
         if (dataField is List) {
           rawList = dataField;
         } else if (dataField is Map) {
-          // V2Board / Laravel Paginator: response.data['data']['data']
           if (dataField['data'] is List) {
             rawList = dataField['data'] as List;
           } else if (dataField['list'] is List) {
@@ -430,25 +505,23 @@ class AuthManager extends ChangeNotifier {
             if (item is Map) {
               list.add(TrafficLogModel.fromJson(Map<String, dynamic>.from(item)));
             }
-          } catch (itemErr) {
-            debugPrint('[AuthManager] 解析單筆 TrafficLog 異常: $itemErr, 原始數據: $item');
+          } catch (_) {
+            SafeLog.d('[AuthManager] 忽略單筆格式不符的流量記錄');
           }
         }
         list.sort((a, b) => b.recordAt.compareTo(a.recordAt));
-        debugPrint('[AuthManager] 成功解析 ${list.length} 筆真實流量記錄');
+        SafeLog.d('[AuthManager] 成功解析 ${list.length} 筆流量記錄');
         return list;
       }
 
-      debugPrint('[AuthManager] 未能從 API 回應中解析出流量記錄列表: $respData');
       return [];
-    } catch (e, stack) {
-      // ignore: avoid_print
-      print('[AuthManager] 獲取流量明細失敗: $e\n$stack');
+    } catch (_) {
+      SafeLog.d('[AuthManager] 獲取流量明細未完成');
       return [];
     }
   }
 
-  /// 獲取系統最新公告列表 (對齊 V2Board /api/v1/user/notice/fetch)
+  /// 獲取系統最新公告列表 (GET /api/v1/user/notice/fetch)
   Future<List<NoticeModel>> fetchNotices() async {
     try {
       final response = await _dioClient.get('/api/v1/user/notice/fetch');
@@ -464,9 +537,8 @@ class AuthManager extends ChangeNotifier {
         return list;
       }
       return [];
-    } catch (e) {
-      // ignore: avoid_print
-      print('[AuthManager] 獲取公告失敗: $e');
+    } catch (_) {
+      SafeLog.d('[AuthManager] 獲取公告未完成');
       return [];
     }
   }
@@ -491,7 +563,7 @@ class AuthManager extends ChangeNotifier {
     }
   }
 
-  /// 主動登出 (連動斷開 VPN 代理並廣播清理本地金庫與客服會話)
+  /// 主動登出 (連動斷開代理並廣播清理本地金庫與客服會話)
   Future<void> logout() async {
     try {
       await CoreDaemon.instance.stop();
@@ -504,68 +576,36 @@ class AuthManager extends ChangeNotifier {
     _setState(AuthState.unauthenticated());
   }
 
-  /// 由 401 攔截器呼叫之強制踢出程序 (連動切斷 VPN 避免幽靈代理並清理金庫與客服會話)
+  /// 由 401/403 攔截器呼叫之強制踢出程序 (連動切斷代理避免幽靈連線並清理金庫與客服會話)
   void handleUnauthorized() {
     try {
       CoreDaemon.instance.stop();
     } catch (_) {}
+    unawaited(_storageService.clearAll());
     try {
       CustomerServiceModal.clearSession();
     } catch (_) {}
     _notifySessionCleared();
     _setState(
       AuthState.unauthenticated().copyWith(
-        errorMessage: '登入已過期或在其他裝置登入，請重新驗證',
+        errorMessage: I18nService.instance.t('err_session_expired'),
       ),
     );
   }
 
-  /// 提取 Dio 錯誤訊息 (提供在地化友好提示，杜絕直接輸出底層英文除錯堆疊)
+  /// 提取 Dio 錯誤訊息 (提供在地化友好提示，杜絕直接輸出底層英文除錯堆疊與任何 IP/URL)
   String _extractErrorMessage(DioException e) {
-    if (e.response?.data is Map) {
-      final data = e.response!.data as Map;
-      if (data['message'] != null && data['message'].toString().isNotEmpty) {
-        return data['message'].toString();
-      }
-      if (data['errors'] is Map) {
-        final errors = data['errors'] as Map;
-        final firstError = errors.values.first;
-        if (firstError is List && firstError.isNotEmpty) {
-          return firstError.first.toString();
-        }
-        return errors.values.first.toString();
-      }
-    }
-
     final statusCode = e.response?.statusCode;
-    if (statusCode == 400 || statusCode == 422) {
-      return '電子郵件或密碼輸入有誤，請確認後重試';
-    }
-    if (statusCode == 401) {
-      return '登入驗證失敗或憑證無效';
-    }
-    if (statusCode == 403) {
-      return '存取遭拒絕，請聯絡客服';
-    }
-    if (statusCode == 404) {
-      return 'API 伺服器端點異常 (404)，備援線路切換中，請重試';
-    }
-    if (statusCode != null && statusCode >= 500) {
-      return '伺服器維護中 ($statusCode)，請稍後再試';
+    final respData = e.response?.data;
+
+    if (ErrorSanitizer.isSessionExpiredResponse(statusCode, respData)) {
+      return I18nService.instance.t('err_session_expired');
     }
 
-    if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.sendTimeout) {
-      return '網路連線逾時，請檢查網路連線或稍後重試';
-    }
-    if (e.type == DioExceptionType.connectionError) {
-      return '無法連線至伺服器，請確認網路連線';
-    }
-    return '伺服器通訊異常，請稍後重試';
+    return ErrorSanitizer.sanitize(e);
   }
 
-  /// 更新本地使用者狀態 (用於演示模式或自動化測試)
+  /// 更新本地使用者狀態 (用於自動化單元測試)
   void updateUserForTest(UserModel user, {String token = 'test_token'}) {
     _setState(AuthState.authenticated(user: user, token: token));
   }

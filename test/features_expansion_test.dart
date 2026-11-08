@@ -141,25 +141,25 @@ void main() {
       // 1. 預設繁體中文
       await i18n.setLanguage(AppLanguage.zhTW);
       expect(i18n.currentLanguage, AppLanguage.zhTW);
-      expect(i18n.t('status_disconnected'), '未連接');
+      expect(i18n.t('status_disconnected_badge'), '未連接');
       expect(i18n.t('traffic_details'), '流量明細');
 
       // 2. 切換簡體中文
       await i18n.setLanguage(AppLanguage.zhCN);
       expect(i18n.currentLanguage, AppLanguage.zhCN);
-      expect(i18n.t('status_disconnected'), '未连接');
+      expect(i18n.t('status_disconnected_badge'), '未连接');
       expect(i18n.t('traffic_details'), '流量明细');
 
       // 3. 切換英文
       await i18n.setLanguage(AppLanguage.en);
       expect(i18n.currentLanguage, AppLanguage.en);
-      expect(i18n.t('status_disconnected'), 'Disconnected');
+      expect(i18n.t('status_disconnected_badge'), 'Disconnected');
       expect(i18n.t('traffic_details'), 'Traffic Details');
 
       // 4. 切換日文
       await i18n.setLanguage(AppLanguage.ja);
       expect(i18n.currentLanguage, AppLanguage.ja);
-      expect(i18n.t('status_disconnected'), '未接続');
+      expect(i18n.t('status_disconnected_badge'), '未接続');
       expect(i18n.t('traffic_details'), '通信量明細');
 
       // 復原為繁體中文

@@ -1,7 +1,7 @@
 // lib/presentation/more/crisp_chat_screen.dart
 
 import 'package:flutter/material.dart';
-
+import '../../core/i18n/i18n_service.dart';
 import '../../business/auth/user_model.dart';
 import '../dashboard/widgets/customer_service_modal.dart';
 
@@ -29,7 +29,7 @@ class CrispChatScreen extends StatelessWidget {
         transferEnable: 0,
         u: 0,
         d: 0,
-        planName: '標準會員',
+        planName: I18nService.instance.t('member_regular'),
       );
     }
 

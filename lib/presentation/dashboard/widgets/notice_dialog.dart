@@ -7,7 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/i18n/i18n_service.dart';
 
 /// 機場彈窗公告對話框 (對齊 Tianhe 3.0 彈窗功能)
-class NoticeDialog extends StatelessWidget {
+class NoticeDialog extends StatefulWidget {
   final NoticeModel notice;
 
   const NoticeDialog({
@@ -24,13 +24,27 @@ class NoticeDialog extends StatelessWidget {
   }
 
   @override
+  State<NoticeDialog> createState() => _NoticeDialogState();
+}
+
+class _NoticeDialogState extends State<NoticeDialog> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final cleanText = notice.cleanContent;
+    final cleanText = widget.notice.cleanContent;
 
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
         decoration: BoxDecoration(
           color: AppTheme.darkCard,
           borderRadius: BorderRadius.circular(24),
@@ -73,7 +87,7 @@ class NoticeDialog extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      notice.title,
+                      widget.notice.title,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -92,19 +106,25 @@ class NoticeDialog extends StatelessWidget {
 
             // 內文區域
             Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SelectableText(
-                      cleanText,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.6,
-                        color: Colors.white,
-                      ),
-                    ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 380),
+                child: Scrollbar(
+                  controller: _scrollController,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(
+                          cleanText,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.65,
+                            color: Colors.white,
+                          ),
+                        ),
                     const SizedBox(height: 16),
 
                     // 若包含優惠代碼或機器人，提供快捷複製按鈕
@@ -154,13 +174,21 @@ class NoticeDialog extends StatelessWidget {
                       ),
                     ],
                   ],
+                    ),
+                  ),
                 ),
               ),
             ),
 
-            // 底部操作列
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            // 底部分隔與操作列 (增加頂部微邊界與留白，避免滾動文字緊貼按鈕)
+            Container(
+              decoration: BoxDecoration(
+                color: AppTheme.darkCard,
+                border: Border(
+                  top: BorderSide(color: Colors.white.withOpacity(0.08), width: 1.0),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(

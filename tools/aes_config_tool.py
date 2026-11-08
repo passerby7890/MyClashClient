@@ -24,22 +24,38 @@ import argparse
 DEFAULT_KEY = "5xfWh681lPHNamV89fKFuqZxQyAaBnjs"  # 32 bytes
 DEFAULT_IV  = "s303Khc0kIFZtVeX"                  # 16 bytes
 
-# 標準天河網絡配置範本
+# 標準天河網絡 v3.1.0 動態配置範本
 SAMPLE_CONFIG = {
-    "api_domain": "https://8.218.176.238:3389",
-    "backup_api_domains": [
-        "https://0n21.com",
-        "https://api-backup.v2board-node.com"
+    "Authentication": "天河网络",
+    "hosts": [
+        "https://8.218.176.238:3389",
+        "https://8.218.176.238:8443",
+        "https://8.219.196.216:3389"
     ],
-    "hosts": "portal.0n23.li",
-    "invite_link": "https://0n21.com/#/register?code=",
-    "crisp_id": "b8b32705-d834-41b5-b6f5-6849fa0679d6",
-    "app_name": "天河網絡",
-    "latest_version": "1.0.0",
-    "min_version": "1.0.0",
-    "apk_url": "https://portal.0n23.li/d/android.apk",
-    "exe_url": "https://portal.0n23.li/d/windows.zip",
-    "changelog": "1. 全面升級深色科技主題\n2. 節點大洲分組 (亞洲/美洲/歐洲/其他)\n3. 支援系統語言自動跟隨"
+    "host_source": "https://portal.thjs789.com/",
+    "Customer": "https://t.me/q8891qcom",
+    "crisp": "b8b32705-d834-41b5-b6f5-6849fa0679d6",
+    "InviteLink": "https://0n21.com/#/register?code=",
+    "latest_version": "3.1.0",
+    "min_version": "3.0.9",
+    "apk_url": "https://8.218.176.238:8443/android.apk",
+    "exe_url": "https://8.218.176.238:8443/setup.exe",
+    "dmg_url": "https://8.218.176.238:8443/mac.dmg",
+    "portable_url": "https://8.218.176.238:8443/Portable.zip",
+    "apk_sha256": "5d1df319083596207daad619b7338661ddff3d8c1f11db3e39468b8d25bef645",
+    "exe_sha256": "ac1317214eb86f754c404bf8c6d472bd050282ba142acf0461d4fa5d3999391f",
+    "changelog": "1. 升级军工级 AES-256 动态混淆加密，端到端保障通信防窃听防篡改
+2. 引入多级 DoH 智能防封锁动态路由，网络穿透力与节点连通率大幅跃升",
+    "notice": 1,
+    "TrafficDetails": 1,
+    "OnlineTicket": 1,
+    "exchange": 0,
+    "Carousel": [
+        {
+            "Carouselimages": "https://icloud.bupat.top/test.png",
+            "Carouseladdress": "https://t.me/Print_520"
+        }
+    ]
 }
 
 def generate_key_and_iv():

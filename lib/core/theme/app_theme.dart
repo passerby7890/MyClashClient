@@ -106,6 +106,24 @@ class AppTheme {
           foregroundColor: primaryCyan,
         ),
       ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF162033),
+        contentTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Segoe UI',
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: primaryCyan.withOpacity(0.42), width: 1.1),
+        ),
+        elevation: 10,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+        actionTextColor: primaryCyan,
+        closeIconColor: Colors.white70,
+      ),
     );
   }
 }

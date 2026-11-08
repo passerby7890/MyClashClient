@@ -71,20 +71,31 @@ flutter build macos --release \
     --obfuscate \
     --split-debug-info="$PROJECT_ROOT/build/macos_symbols" \
     --dart-define=APP_VERSION=3.1.0 \
-    --dart-define=APP_BUILD_NUMBER=110
+    --dart-define=APP_BUILD_NUMBER=111
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "❌ 找不到編譯產物: $APP_BUNDLE"
     exit 1
 fi
 
-# 4. 嵌入 mihomo 內核與離線資料庫至 App Bundle Resources
-echo "📂 正在將內核與規則庫封裝進 $APP_NAME.app Resources..."
+# 4. 嵌入 tianhe_engine 內核至 Contents/MacOS (Apple TN2206 標準) 與離線資料庫至 Resources
+echo "📂 正在將內核與規則庫封裝進 $APP_NAME.app (Apple TN2206 架構)..."
+cp -f "$MIHOMO_BIN" "$APP_BUNDLE/Contents/MacOS/tianhe_engine"
+chmod +x "$APP_BUNDLE/Contents/MacOS/tianhe_engine"
+
+APP_RES_DIR="$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_RES_DIR"
+for db_file in Country.mmdb GeoIP.dat GeoSite.dat ASN.mmdb geoip.metadb; do
+    if [ -f "$MIHOMO_DIR/$db_file" ]; then
+        cp -f "$MIHOMO_DIR/$db_file" "$APP_RES_DIR/"
+    fi
+done
+
+# 兼容舊路徑避免外部測試腳本依賴
 APP_TOOLS_DIR="$APP_BUNDLE/Contents/Resources/tools/mihomo"
 mkdir -p "$APP_TOOLS_DIR"
 cp -f "$MIHOMO_BIN" "$APP_TOOLS_DIR/mihomo"
 chmod +x "$APP_TOOLS_DIR/mihomo"
-
 for db_file in Country.mmdb GeoIP.dat GeoSite.dat ASN.mmdb geoip.metadb; do
     if [ -f "$MIHOMO_DIR/$db_file" ]; then
         cp -f "$MIHOMO_DIR/$db_file" "$APP_TOOLS_DIR/"
@@ -99,6 +110,7 @@ rm -f "$APP_BUNDLE/Contents/Frameworks/App.framework/Resources/kernel_blob.bin" 
 
 # 6. Ad-hoc 本地簽名 (確保 Gatekeeper 與 macOS 13/14/15 順暢執行)
 echo "🔏 正在執行 Ad-hoc 本機程式碼簽名..."
+codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/tianhe_engine" 2>/dev/null || true
 codesign --force --deep --sign - "$APP_BUNDLE"
 
 # 7. 打包封裝為標準拖拽式 DMG

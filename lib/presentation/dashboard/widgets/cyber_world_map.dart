@@ -459,7 +459,7 @@ class _HoloWorldMapHudPainter extends CustomPainter {
       latency = '-- ms';
       latencyColor = const Color(0xFF94A3B8); // 未測速時顯示次級銀灰，絕不造假寫死 42ms
     } else if (node!.latencyMs! < 0) {
-      latency = '逾時';
+      latency = I18nService.instance.t('node_timeout');
       latencyColor = const Color(0xFFF43F5E); // 警告玫紅
     } else {
       latency = '${node!.latencyMs} ms';

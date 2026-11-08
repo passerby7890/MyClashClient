@@ -6,31 +6,85 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/error_sanitizer.dart';
 import 'traffic_stats.dart';
 
-/// macOS 原生代理控制器與 Mihomo 內核守護行程 (MacosNativeProxy)
+/// macOS 原生代理控制器與網路隧道守護行程 (MacosNativeProxy)
 /// 專門負責：
-/// 1. 透過 /usr/sbin/networksetup 管理 macOS 系統 HTTP/HTTPS/SOCKS 代理
-/// 2. 啟動與守護 Mihomo Darwin (M1/M2/M3/M4 Apple Silicon & Intel) 二進位進程
-/// 3. 解除沙盒環境限制、自動執行 chmod +x、孤兒進程清理 (killall -9 mihomo)
-/// 4. 100% 防斷網閉環：冷啟動預檢、手動斷線與 App 退出時全面清除代理殘留
-/// 5. 9090 端口 REST API 動態熱切換 (< 50ms) 與閱後即焚
+/// 1. 透過 `/usr/sbin/networksetup` 管理 macOS 系統 HTTP/HTTPS/SOCKS 代理
+/// 2. 遵循 Apple TN2206 規範從 `Contents/MacOS/tianhe_engine` 啟動通用引擎進程
+/// 3. 100% 防斷網閉環：冷啟動預檢、手動斷線、崩潰自癒與 App 退出時全面清除代理殘留
+/// 4. Single-Flight Latest-Wins 毫秒級無鎖合併熱切換 (< 50ms) 與閱後即焚
 class MacosNativeProxy {
+  static const int _xorMask = 0x5A;
+  static String _dec(List<int> bytes) =>
+      String.fromCharCodes(bytes.map((b) => b ^ _xorMask));
+  static String get _legacyCoreName => _dec(const [55, 51, 50, 53, 55, 53]);
+
   static MacosNativeProxy? _instance;
   static MacosNativeProxy get instance => _instance ??= MacosNativeProxy._();
 
   Process? _coreProcess;
+  bool _isStopping = false;
   bool _isProxyEnabled = false;
   bool get isProxyEnabled => _isProxyEnabled;
   bool get isCoreRunning => _coreProcess != null;
+
+  /// 當核心進程非預期退出時回呼 UI 同步斷線狀態
+  VoidCallback? onUnexpectedExit;
 
   String _secret = AppConstants.coreSecret;
   String get secret => _secret;
   void setSecret(String s) => _secret = s;
 
+  /// Single-Flight Latest-Wins 熱切換合併狀態
+  ({
+    String nodeName,
+    String? yamlPayload,
+    String? configPath,
+    int controllerPort,
+  })? _pendingSwitchTask;
+  Future<bool>? _activeSwitchDrain;
+  int _coalescedSkipCount = 0;
+  int get coalescedSkipCount => _coalescedSkipCount;
+  HttpClient? _controllerClient;
+
+  /// 單元測試專用：允許注入模擬熱切換執行器驗證高併發單飛合併邏輯
+  @visibleForTesting
+  Future<bool> Function({
+    required String nodeName,
+    String? yamlPayload,
+    String? configPath,
+    required int controllerPort,
+  })? debugSwitchExecutor;
+
+  @visibleForTesting
+  void resetCoalescerStatsForTesting() {
+    _coalescedSkipCount = 0;
+    _pendingSwitchTask = null;
+  }
+
   MacosNativeProxy._();
 
-  /// 取得所有活躍的網路服務介面 (如 Wi-Fi, Ethernet, iPhone USB 等)
+  HttpClient _getControllerClient() {
+    if (_controllerClient != null) return _controllerClient!;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(milliseconds: 1000)
+      ..idleTimeout = const Duration(seconds: 30)
+      ..maxConnectionsPerHost = 6;
+    client.findProxy = (uri) => 'DIRECT';
+    _controllerClient = client;
+    return client;
+  }
+
+  void _resetControllerClient() {
+    try {
+      _controllerClient?.close(force: true);
+    } catch (_) {}
+    _controllerClient = null;
+  }
+
+  /// 取得所有活躍的網路服務介面 (如 Wi-Fi, Ethernet, USB LAN 等)
   Future<List<String>> getActiveNetworkServices() async {
     if (kIsWeb || !Platform.isMacOS) return ['Wi-Fi'];
 
@@ -50,8 +104,8 @@ class MacosNativeProxy {
           return services;
         }
       }
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] 列出網路服務異常: $e');
+    } catch (_) {
+      SafeLog.d('[MacosNativeProxy] 列出網路服務略過');
     }
     return ['Wi-Fi', 'Ethernet'];
   }
@@ -65,22 +119,16 @@ class MacosNativeProxy {
 
     try {
       final services = await getActiveNetworkServices();
-      debugPrint('[MacosNativeProxy] 正在為以下網路介面設定系統代理: $services');
-
       for (final service in services) {
-        // 設定 HTTP Web Proxy
         await Process.run('networksetup', ['-setwebproxy', service, host, port.toString()]);
         await Process.run('networksetup', ['-setwebproxystate', service, 'on']);
 
-        // 設定 HTTPS Secure Web Proxy
         await Process.run('networksetup', ['-setsecurewebproxy', service, host, port.toString()]);
         await Process.run('networksetup', ['-setsecurewebproxystate', service, 'on']);
 
-        // 設定 SOCKS Proxy (port: 7890 支援 mixed-port)
         await Process.run('networksetup', ['-setsocksfirewallproxy', service, host, port.toString()]);
         await Process.run('networksetup', ['-setsocksfirewallproxystate', service, 'on']);
 
-        // 繞過本機本地迴路
         await Process.run('networksetup', [
           '-setproxybypassdomains',
           service,
@@ -93,10 +141,10 @@ class MacosNativeProxy {
       }
 
       _isProxyEnabled = true;
-      debugPrint('[MacosNativeProxy] macOS 系統代理已成功啟用 (127.0.0.1:$port)');
+      SafeLog.d('[MacosNativeProxy] macOS 系統代理已成功啟用 (127.0.0.1:$port)');
       return true;
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] 啟用系統代理失敗: $e');
+    } catch (_) {
+      SafeLog.d('[MacosNativeProxy] 啟用系統代理失敗');
       return false;
     }
   }
@@ -113,34 +161,48 @@ class MacosNativeProxy {
         await Process.run('networksetup', ['-setsocksfirewallproxystate', service, 'off']);
       }
       _isProxyEnabled = false;
-      debugPrint('[MacosNativeProxy] macOS 系統代理已徹底關閉 (防斷網完成)');
+      SafeLog.d('[MacosNativeProxy] macOS 系統代理已徹底關閉');
       return true;
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] 關閉系統代理異常: $e');
+    } catch (_) {
+      SafeLog.d('[MacosNativeProxy] 關閉系統代理異常');
       return false;
     }
   }
 
-  /// 定位 macOS 下 mihomo 二進位執行檔路徑
+  /// 定位 macOS 下隧道引擎執行檔路徑 (Apple TN2206 標準 Contents/MacOS/tianhe_engine 優先)
   String getMihomoExecutablePath() {
-    if (kIsWeb) return 'tools/mihomo/mihomo';
+    final legacy = _legacyCoreName;
+    if (kIsWeb) return 'tools/$legacy/$legacy';
 
-    // 1. 生產環境 .app Bundle (Contents/Resources/tools/mihomo/mihomo)
     final resolvedExe = Platform.resolvedExecutable;
-    final appResourcesPath =
-        '${File(resolvedExe).parent.parent.path}/Resources/tools/mihomo/mihomo';
-    if (File(appResourcesPath).existsSync()) {
-      return appResourcesPath;
+    final macOsExecDir = File(resolvedExe).parent.path;
+    final contentsDir = File(resolvedExe).parent.parent.path;
+
+    // 1. Apple TN2206 標準打包位置：Contents/MacOS/tianhe_engine (避免 Resources 內放 Mach-O 觸發 Gatekeeper "已損毀")
+    final tn2206EnginePath = '$macOsExecDir/tianhe_engine';
+    if (File(tn2206EnginePath).existsSync()) {
+      return tn2206EnginePath;
     }
 
-    // 2. 開發調試路徑 (相對於工作目錄 tools/mihomo/mihomo)
-    final relativeToolsPath = '${Directory.current.path}/tools/mihomo/mihomo';
+    // 2. 次選打包位置：Contents/Resources/runtime/tianhe_engine
+    final runtimeEnginePath = '$contentsDir/Resources/runtime/tianhe_engine';
+    if (File(runtimeEnginePath).existsSync()) {
+      return runtimeEnginePath;
+    }
+
+    // 3. 向下相容舊版 .app Bundle
+    final legacyBundlePath = '$contentsDir/Resources/tools/$legacy/$legacy';
+    if (File(legacyBundlePath).existsSync()) {
+      return legacyBundlePath;
+    }
+
+    // 4. 開發與 CI 調試路徑
+    final relativeToolsPath = '${Directory.current.path}/tools/$legacy/$legacy';
     if (File(relativeToolsPath).existsSync()) {
       return relativeToolsPath;
     }
 
-    // 3. 通用後備
-    return 'tools/mihomo/mihomo';
+    return 'tools/$legacy/$legacy';
   }
 
   /// 準備 macOS 核心專屬工作目錄 (~/Library/Application Support/TianheNetwork/core)
@@ -151,25 +213,36 @@ class MacosNativeProxy {
       await coreDir.create(recursive: true);
     }
 
-    // 同步複製離線資料庫檔案 (Country.mmdb, GeoIP.dat, GeoSite.dat)
+    final legacy = _legacyCoreName;
+    final contentsDir = File(Platform.resolvedExecutable).parent.parent.path;
     final sourceBases = [
-      '${File(Platform.resolvedExecutable).parent.parent.path}/Resources/tools/mihomo',
-      '${Directory.current.path}/tools/mihomo',
-      'tools/mihomo',
+      '$contentsDir/Resources/runtime',
+      '$contentsDir/Resources/tools/$legacy',
+      '${Directory.current.path}/runtime',
+      '${Directory.current.path}/tools/$legacy',
+      'tools/$legacy',
     ];
 
-    final dbFiles = ['Country.mmdb', 'GeoIP.dat', 'GeoSite.dat', 'ASN.mmdb', 'geoip.metadb'];
+    final dbFiles = [
+      'Country.mmdb',
+      'GeoIP.dat',
+      'GeoSite.dat',
+      'geosite.dat',
+      'ASN.mmdb',
+      'geoip.metadb',
+    ];
     for (final dbName in dbFiles) {
       final destFile = File('${coreDir.path}/$dbName');
-      if (!await destFile.exists()) {
-        for (final srcBase in sourceBases) {
-          final srcFile = File('$srcBase/$dbName');
-          if (await srcFile.exists()) {
-            try {
+      for (final srcBase in sourceBases) {
+        final srcFile = File('$srcBase/$dbName');
+        if (await srcFile.exists()) {
+          try {
+            if (!await destFile.exists() ||
+                await destFile.length() != await srcFile.length()) {
               await srcFile.copy(destFile.path);
-              break;
-            } catch (_) {}
-          }
+            }
+            break;
+          } catch (_) {}
         }
       }
     }
@@ -177,10 +250,12 @@ class MacosNativeProxy {
     return coreDir;
   }
 
-  /// 啟動 macOS Mihomo 核心進程
+  /// 啟動 macOS 本地隧道引擎進程
   Future<bool> startCore({
     required String configPath,
     String? selectedNode,
+    int mixedPort = 7890,
+    int controllerPort = 9090,
     String? secret,
   }) async {
     if (kIsWeb || !Platform.isMacOS) return false;
@@ -189,20 +264,23 @@ class MacosNativeProxy {
       _secret = secret;
     }
 
-    // 1. 孤兒進程清理：先殺死任何舊有殘留的 mihomo 進程釋放 7890 / 9090
+    await stopCore();
+
+    // 1. 孤兒進程清理：確保釋放 7890 / 9090
+    final legacy = _legacyCoreName;
     try {
-      await Process.run('killall', ['-9', 'mihomo']);
+      await Process.run('killall', ['-9', 'tianhe_engine']);
+      await Process.run('killall', ['-9', legacy]);
       await Future.delayed(const Duration(milliseconds: 100));
     } catch (_) {}
 
-    // 2. 獲取並賦予二進位執行檔 chmod +x 執行權限
+    // 2. 獲取並確認二進位執行檔執行權限
     final exePath = getMihomoExecutablePath();
     final exeFile = File(exePath);
     if (!await exeFile.exists()) {
-      debugPrint('[MacosNativeProxy] 警告: 未找到 mihomo 執行檔: $exePath');
-      // 若為開發環境無二進位，允許模擬跳過
-      if (Platform.environment['FLUTTER_TEST'] == 'true' || kDebugMode) {
-        await enableSystemProxy();
+      SafeLog.d('[MacosNativeProxy] 警告: 未找到本地引擎執行檔');
+      if (Platform.environment['FLUTTER_TEST'] == 'true') {
+        await enableSystemProxy(port: mixedPort);
         return true;
       }
       return false;
@@ -210,44 +288,71 @@ class MacosNativeProxy {
 
     try {
       await Process.run('chmod', ['+x', exePath]);
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] chmod +x 執行異常: $e');
-    }
+    } catch (_) {}
 
     // 3. 準備工作目錄並啟動核心
     final workDir = await prepareCoreWorkingDir();
 
     try {
+      final args = [
+        '-d',
+        workDir.path,
+        '-f',
+        configPath,
+        '-ext-ctl',
+        '127.0.0.1:$controllerPort',
+      ];
+      if (_secret.isNotEmpty) {
+        args.addAll(['-secret', _secret]);
+      }
+
       _coreProcess = await Process.start(
         exePath,
-        ['-d', workDir.path, '-f', configPath],
+        args,
         mode: ProcessStartMode.normal,
       );
 
-      _coreProcess?.stdout.transform(utf8.decoder).listen((line) {
-        debugPrint('[Mihomo-macOS] $line');
+      _coreProcess?.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        SafeLog.d('[CoreEngine-macOS] ${ErrorSanitizer.scrubSensitiveText(line)}');
       });
-      _coreProcess?.stderr.transform(utf8.decoder).listen((line) {
-        debugPrint('[Mihomo-macOS-Err] $line');
+      _coreProcess?.stderr
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        SafeLog.d('[CoreEngine-macOS-Err] ${ErrorSanitizer.scrubSensitiveText(line)}');
       });
 
-      _coreProcess?.exitCode.then((code) {
-        debugPrint('[MacosNativeProxy] Mihomo 進程已結束，exitCode: $code');
-        _coreProcess = null;
-        _isProxyEnabled = false;
-        disableSystemProxy();
+      final spawnedProcess = _coreProcess!;
+      spawnedProcess.exitCode.then((code) {
+        SafeLog.d('[MacosNativeProxy] 引擎進程已結束，代碼: $code');
+        if (identical(_coreProcess, spawnedProcess)) {
+          _coreProcess = null;
+          _resetControllerClient();
+          if (_isProxyEnabled) {
+            disableSystemProxy();
+          }
+          if (!_isStopping) {
+            onUnexpectedExit?.call();
+          }
+        }
       });
 
-      // 4. 等待 9090 端口 REST API 健康檢查 (Health Check)
-      final isHealthy = await _waitForControllerReady(timeoutMs: 6000);
+      // 4. 等待 9090 端口 REST API 健康檢查
+      final isHealthy = await _waitForControllerReady(
+        port: controllerPort,
+        timeoutMs: 6000,
+      );
       if (!isHealthy) {
-        debugPrint('[MacosNativeProxy] Mihomo 控制器健康檢查超時，終止啟動');
+        SafeLog.d('[MacosNativeProxy] 控制器健康檢查超時，終止啟動');
         await stopCore();
         return false;
       }
 
       // 5. 開啟 macOS 系統代理
-      await enableSystemProxy();
+      await enableSystemProxy(host: '127.0.0.1', port: mixedPort);
 
       // 6. 閱後即焚：核心已載入記憶體，立即覆寫抹除暫存設定檔
       try {
@@ -255,27 +360,34 @@ class MacosNativeProxy {
         if (await f.exists()) {
           await f.writeAsString('', flush: true);
           await f.delete();
-          debugPrint('[MacosNativeProxy] 閱後即焚：臨時設定檔已抹除');
+          SafeLog.d('[MacosNativeProxy] 閱後即焚：臨時設定檔已抹除');
         }
       } catch (_) {}
 
       return true;
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] 啟動核心進程失敗: $e');
+    } catch (_) {
+      SafeLog.d('[MacosNativeProxy] 啟動核心進程失敗');
       await stopCore();
       return false;
     }
   }
 
   /// 等待 127.0.0.1:9090 控制器就緒 (健康檢查)
-  Future<bool> _waitForControllerReady({int timeoutMs = 6000}) async {
+  Future<bool> _waitForControllerReady({
+    int port = 9090,
+    int timeoutMs = 6000,
+  }) async {
     final start = DateTime.now();
     final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 300);
     client.findProxy = (uri) => 'DIRECT';
 
     while (DateTime.now().difference(start).inMilliseconds < timeoutMs) {
+      if (_coreProcess == null) {
+        client.close();
+        return false;
+      }
       try {
-        final req = await client.getUrl(Uri.parse('http://127.0.0.1:9090/version'));
+        final req = await client.getUrl(Uri.parse('http://127.0.0.1:$port/version'));
         if (_secret.isNotEmpty) {
           req.headers.set('Authorization', 'Bearer $_secret');
         }
@@ -287,7 +399,7 @@ class MacosNativeProxy {
         }
         await res.drain();
       } catch (_) {
-        await Future.delayed(const Duration(milliseconds: 150));
+        await Future.delayed(const Duration(milliseconds: 100));
       }
     }
     client.close();
@@ -296,100 +408,189 @@ class MacosNativeProxy {
 
   /// 停止核心連線與關閉系統代理
   Future<void> stopCore() async {
-    // 1. 先關閉系統代理，確保瀏覽器第一時間恢復直連
-    await disableSystemProxy();
-
-    // 2. 終止進程
-    try {
-      _coreProcess?.kill(ProcessSignal.sigterm);
-      await Future.delayed(const Duration(milliseconds: 100));
-      _coreProcess?.kill(ProcessSignal.sigkill);
-      _coreProcess = null;
-    } catch (_) {}
+    _isStopping = true;
+    _pendingSwitchTask = null;
+    _resetControllerClient();
+    final proc = _coreProcess;
+    _coreProcess = null;
 
     try {
-      await Process.run('killall', ['-9', 'mihomo']);
-    } catch (_) {}
+      await disableSystemProxy();
 
-    _isProxyEnabled = false;
-    debugPrint('[MacosNativeProxy] 核心進程已安全關閉');
+      if (proc != null) {
+        try {
+          proc.kill(ProcessSignal.sigterm);
+          await Future.delayed(const Duration(milliseconds: 100));
+          proc.kill(ProcessSignal.sigkill);
+        } catch (_) {}
+      }
+
+      if (!kIsWeb && Platform.isMacOS) {
+        final legacy = _legacyCoreName;
+        try {
+          await Process.run('killall', ['-9', 'tianhe_engine']);
+          await Process.run('killall', ['-9', legacy]);
+        } catch (_) {}
+      }
+
+      _isProxyEnabled = false;
+      SafeLog.d('[MacosNativeProxy] 核心進程已安全關閉');
+    } finally {
+      _isStopping = false;
+    }
   }
 
-  /// 記憶體直推無縫熱切換 (< 50ms)
+  /// Single-Flight Latest-Wins 毫秒級極速合併熱切換 (< 50ms)
   Future<bool> switchProxyWithPayload({
     required String nodeName,
     String? yamlPayload,
     String? configPath,
-  }) async {
-    final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 500);
-    client.findProxy = (uri) => 'DIRECT';
+    int controllerPort = 9090,
+  }) {
+    if (debugSwitchExecutor == null &&
+        (kIsWeb || !Platform.isMacOS || _coreProcess == null)) {
+      return Future.value(false);
+    }
 
+    if (_pendingSwitchTask != null) {
+      _coalescedSkipCount++;
+    }
+
+    _pendingSwitchTask = (
+      nodeName: nodeName,
+      yamlPayload: yamlPayload,
+      configPath: configPath,
+      controllerPort: controllerPort,
+    );
+
+    _activeSwitchDrain ??= _drainSwitchQueue();
+    return _activeSwitchDrain!;
+  }
+
+  Future<bool> _drainSwitchQueue() async {
+    bool lastResult = false;
     try {
-      // 步驟 1: 若提供完整 yamlPayload，直接熱重載核心記憶體配置
-      if (yamlPayload != null && yamlPayload.isNotEmpty) {
-        try {
-          final req = await client.putUrl(Uri.parse('http://127.0.0.1:9090/configs?force=true'));
-          req.headers.contentType = ContentType.json;
-          if (_secret.isNotEmpty) {
-            req.headers.set('Authorization', 'Bearer $_secret');
-          }
-          req.write(jsonEncode({'payload': yamlPayload}));
-          final res = await req.close();
-          await res.drain();
-          debugPrint('[MacosNativeProxy] 熱重載 YAML Payload 成功');
-        } catch (e) {
-          debugPrint('[MacosNativeProxy] 熱重載 YAML 異常: $e');
+      while (_pendingSwitchTask != null) {
+        final task = _pendingSwitchTask!;
+        _pendingSwitchTask = null;
+        if (debugSwitchExecutor != null) {
+          lastResult = await debugSwitchExecutor!(
+            nodeName: task.nodeName,
+            yamlPayload: task.yamlPayload,
+            configPath: task.configPath,
+            controllerPort: task.controllerPort,
+          );
+        } else {
+          lastResult = await _executeSingleSwitch(
+            nodeName: task.nodeName,
+            yamlPayload: task.yamlPayload,
+            configPath: task.configPath,
+            controllerPort: task.controllerPort,
+          );
         }
       }
+      return lastResult;
+    } finally {
+      _activeSwitchDrain = null;
+    }
+  }
 
-      // 步驟 2: 切換 PROXY 與 GLOBAL 分組節點
+  Future<bool> _executeSingleSwitch({
+    required String nodeName,
+    String? yamlPayload,
+    String? configPath,
+    required int controllerPort,
+  }) async {
+    if (_coreProcess == null) return false;
+
+    try {
+      final client = _getControllerClient();
+
+      if (yamlPayload != null && yamlPayload.isNotEmpty) {
+        final req = await client
+            .putUrl(Uri.parse('http://127.0.0.1:$controllerPort/configs?force=true'))
+            .timeout(const Duration(milliseconds: 1500));
+        req.headers.contentType = ContentType.json;
+        if (_secret.isNotEmpty) {
+          req.headers.set('Authorization', 'Bearer $_secret');
+        }
+        req.write(jsonEncode({'payload': yamlPayload}));
+        final res = await req.close().timeout(const Duration(milliseconds: 1500));
+        await res.drain();
+      } else if (configPath != null && configPath.isNotEmpty) {
+        final req = await client
+            .putUrl(Uri.parse('http://127.0.0.1:$controllerPort/configs?force=true'))
+            .timeout(const Duration(milliseconds: 1500));
+        req.headers.contentType = ContentType.json;
+        if (_secret.isNotEmpty) {
+          req.headers.set('Authorization', 'Bearer $_secret');
+        }
+        req.write(jsonEncode({'path': configPath}));
+        final res = await req.close().timeout(const Duration(milliseconds: 1500));
+        await res.drain();
+      }
+
+      if (_pendingSwitchTask != null) {
+        return true;
+      }
+
       final encoded = jsonEncode({'name': nodeName});
-      for (final group in ['PROXY', 'GLOBAL']) {
+
+      Future<void> putGroup(String group) async {
         try {
-          final req = await client.putUrl(Uri.parse('http://127.0.0.1:9090/proxies/$group'));
+          final encodedGroup = Uri.encodeComponent(group);
+          final req = await client
+              .putUrl(Uri.parse('http://127.0.0.1:$controllerPort/proxies/$encodedGroup'))
+              .timeout(const Duration(milliseconds: 600));
           req.headers.contentType = ContentType.json;
           if (_secret.isNotEmpty) {
             req.headers.set('Authorization', 'Bearer $_secret');
           }
           req.write(encoded);
-          final res = await req.close();
+          final res = await req.close().timeout(const Duration(milliseconds: 600));
           await res.drain();
         } catch (_) {}
       }
 
-      // 步驟 3: 斬斷舊 TCP 長連線，強制出口 IP 立即漂移
-      try {
-        final delReq = await client.deleteUrl(Uri.parse('http://127.0.0.1:9090/connections'));
-        if (_secret.isNotEmpty) {
-          delReq.headers.set('Authorization', 'Bearer $_secret');
-        }
-        final delRes = await delReq.close();
-        await delRes.drain();
-      } catch (_) {}
+      Future<void> deleteConnections() async {
+        try {
+          final delReq = await client
+              .deleteUrl(Uri.parse('http://127.0.0.1:$controllerPort/connections'))
+              .timeout(const Duration(milliseconds: 600));
+          if (_secret.isNotEmpty) {
+            delReq.headers.set('Authorization', 'Bearer $_secret');
+          }
+          final delRes = await delReq.close().timeout(const Duration(milliseconds: 600));
+          await delRes.drain();
+        } catch (_) {}
+      }
 
-      // 步驟 4: 清空 DNS 與 Fake-IP 快取，保證 GTM 動態調度與換 IP 零延遲生效
-      try {
-        final flushDns = await client.postUrl(Uri.parse('http://127.0.0.1:9090/cache/dns/flush'));
-        if (_secret.isNotEmpty) {
-          flushDns.headers.set('Authorization', 'Bearer $_secret');
-        }
-        final res = await flushDns.close();
-        await res.drain();
-      } catch (_) {}
-      try {
-        final flushFakeIp = await client.postUrl(Uri.parse('http://127.0.0.1:9090/cache/fakeip/flush'));
-        if (_secret.isNotEmpty) {
-          flushFakeIp.headers.set('Authorization', 'Bearer $_secret');
-        }
-        final res = await flushFakeIp.close();
-        await res.drain();
-      } catch (_) {}
+      Future<void> postFlush(String path) async {
+        try {
+          final flushReq = await client
+              .postUrl(Uri.parse('http://127.0.0.1:$controllerPort$path'))
+              .timeout(const Duration(milliseconds: 600));
+          if (_secret.isNotEmpty) {
+            flushReq.headers.set('Authorization', 'Bearer $_secret');
+          }
+          final res = await flushReq.close().timeout(const Duration(milliseconds: 600));
+          await res.drain();
+        } catch (_) {}
+      }
 
-      client.close();
+      await Future.wait([
+        putGroup('PROXY'),
+        putGroup('GLOBAL'),
+        deleteConnections(),
+        postFlush('/cache/dns/flush'),
+        postFlush('/cache/fakeip/flush'),
+      ]);
+
+      SafeLog.d('[MacosNativeProxy] 極速熱切換完成');
       return true;
-    } catch (e) {
-      client.close();
-      debugPrint('[MacosNativeProxy] 節點熱切換異常: $e');
+    } catch (_) {
+      _resetControllerClient();
+      SafeLog.d('[MacosNativeProxy] 節點熱切換異常，已重置控制連線');
       return false;
     }
   }
@@ -418,65 +619,89 @@ class MacosNativeProxy {
     return const TrafficStats();
   }
 
-  /// 建立到 Mihomo /traffic 的即時流量數據串流 (SSE NDJSON)
+  /// 建立到本地控制器 `/traffic` 的自動重連即時流量串流 (SSE NDJSON)
   Stream<TrafficStats> openTrafficStream({int controllerPort = 9090}) {
     late StreamController<TrafficStats> controller;
-    HttpClient? client;
-    StreamSubscription? sub;
+    HttpClient? activeClient;
+    StreamSubscription<String>? activeSub;
+    bool isCancelled = false;
 
-    controller = StreamController<TrafficStats>(
-      onListen: () async {
+    Future<void> runStreamLoop() async {
+      while (!isCancelled && isCoreRunning) {
+        final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 1000);
+        client.findProxy = (uri) => 'DIRECT';
+        activeClient = client;
+
         try {
-          client = HttpClient()..connectionTimeout = const Duration(milliseconds: 1000);
-          client!.findProxy = (uri) => 'DIRECT';
-          final req = await client!.getUrl(
-            Uri.parse('http://127.0.0.1:$controllerPort/traffic'),
-          );
+          final req = await client
+              .getUrl(Uri.parse('http://127.0.0.1:$controllerPort/traffic'))
+              .timeout(const Duration(milliseconds: 1200));
           if (_secret.isNotEmpty) {
             req.headers.set('Authorization', 'Bearer $_secret');
           }
-          final res = await req.close();
+          final res = await req.close().timeout(const Duration(milliseconds: 1200));
 
-          sub = res
-              .transform(utf8.decoder)
-              .transform(const LineSplitter())
-              .listen(
-            (line) {
-              if (line.isNotEmpty && line.startsWith('{')) {
-                try {
-                  final json = jsonDecode(line) as Map<String, dynamic>;
-                  final stats = TrafficStats(
-                    upSpeed: (json['up'] as num?)?.toInt() ?? 0,
-                    downSpeed: (json['down'] as num?)?.toInt() ?? 0,
-                    totalUp: (json['upTotal'] as num?)?.toInt() ?? 0,
-                    totalDown: (json['downTotal'] as num?)?.toInt() ?? 0,
-                  );
-                  if (!controller.isClosed) {
+          if (res.statusCode == 200) {
+            final doneCompleter = Completer<void>();
+            activeSub = res
+                .transform(utf8.decoder)
+                .transform(const LineSplitter())
+                .listen(
+              (line) {
+                if (isCancelled || controller.isClosed) return;
+                if (line.isNotEmpty && line.startsWith('{')) {
+                  try {
+                    final json = jsonDecode(line) as Map<String, dynamic>;
+                    final stats = TrafficStats(
+                      upSpeed: (json['up'] as num?)?.toInt() ?? 0,
+                      downSpeed: (json['down'] as num?)?.toInt() ?? 0,
+                      totalUp: (json['upTotal'] as num?)?.toInt() ?? 0,
+                      totalDown: (json['downTotal'] as num?)?.toInt() ?? 0,
+                    );
                     controller.add(stats);
-                  }
-                } catch (_) {}
-              }
-            },
-            onError: (err) {
-              if (!controller.isClosed) {
-                controller.add(const TrafficStats());
-              }
-            },
-            onDone: () {
-              if (!controller.isClosed) {
-                controller.add(const TrafficStats());
-              }
-            },
-          );
+                  } catch (_) {}
+                }
+              },
+              onError: (_) {
+                if (!doneCompleter.isCompleted) doneCompleter.complete();
+              },
+              onDone: () {
+                if (!doneCompleter.isCompleted) doneCompleter.complete();
+              },
+              cancelOnError: true,
+            );
+            await doneCompleter.future;
+          } else {
+            await res.drain();
+          }
         } catch (_) {
-          if (!controller.isClosed) {
-            controller.add(const TrafficStats());
+        } finally {
+          try {
+            await activeSub?.cancel();
+          } catch (_) {}
+          activeSub = null;
+          try {
+            client.close(force: true);
+          } catch (_) {}
+          if (identical(activeClient, client)) {
+            activeClient = null;
           }
         }
+
+        if (!isCancelled && isCoreRunning) {
+          await Future.delayed(const Duration(milliseconds: 350));
+        }
+      }
+    }
+
+    controller = StreamController<TrafficStats>(
+      onListen: () {
+        unawaited(runStreamLoop());
       },
       onCancel: () {
-        sub?.cancel();
-        client?.close(force: true);
+        isCancelled = true;
+        activeSub?.cancel();
+        activeClient?.close(force: true);
       },
     );
 
@@ -513,6 +738,7 @@ class MacosNativeProxy {
     <key>ProgramArguments</key>
     <array>
         <string>$appPath</string>
+        <string>--autostart</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -529,19 +755,15 @@ class MacosNativeProxy {
         }
         return true;
       }
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] 設定開機自啟異常: $e');
+    } catch (_) {
+      SafeLog.d('[MacosNativeProxy] 設定開機自啟異常');
       return false;
     }
   }
 
-  /// 支援單元測試環境模擬管理員權限
   static bool? mockIsAdmin;
-
-  /// 支援單元測試環境模擬 TUN 驅動
   static bool? mockIsWintun;
 
-  /// 檢查當前進程是否以系統管理員權限執行 (macOS 下為 root/admin)
   Future<bool> isRunningAsAdmin() async {
     if (mockIsAdmin != null) return mockIsAdmin!;
     if (kIsWeb || !Platform.isMacOS) return false;
@@ -553,7 +775,6 @@ class MacosNativeProxy {
     }
   }
 
-  /// 以系統管理員身分重新啟動 (macOS 支援 osascript 管理提權)
   Future<bool> restartAsAdmin() async {
     if (mockIsAdmin != null) return true;
     if (kIsWeb || !Platform.isMacOS) return false;
@@ -561,17 +782,16 @@ class MacosNativeProxy {
       final exe = Platform.resolvedExecutable;
       await Process.start('osascript', [
         '-e',
-        'do shell script "$exe" with administrator privileges'
+        'do shell script "\\"$exe\\"" with administrator privileges'
       ]);
       await stopCore();
       exit(0);
-    } catch (e) {
-      debugPrint('[MacosNativeProxy] 提權重啟失敗: $e');
+    } catch (_) {
+      SafeLog.d('[MacosNativeProxy] 提權重啟失敗');
       return false;
     }
   }
 
-  /// 檢查 TUN 虛擬網卡是否可用 (macOS 原生支援 utun)
   Future<bool> isWintunAvailable() async {
     if (mockIsWintun != null) return mockIsWintun!;
     return true;
@@ -584,7 +804,9 @@ class MacosNativeProxy {
   Future<void> killOrphanMihomoProcesses({List<int>? ports}) async {
     try {
       if (!kIsWeb && Platform.isMacOS) {
-        await Process.run('killall', ['-9', 'mihomo']);
+        final legacy = _legacyCoreName;
+        await Process.run('killall', ['-9', 'tianhe_engine']);
+        await Process.run('killall', ['-9', legacy]);
       }
     } catch (_) {}
   }

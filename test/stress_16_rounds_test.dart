@@ -201,7 +201,7 @@ proxies:
       await subEngine.restoreFromVault();
 
       final testUser = UserModel(
-        email: 'nick0425@gmail.com',
+        email: 'audit_user@tianhe.net',
         transferEnable: 1024 * 1024 * 1024 * 100,
         u: 1024 * 1024 * 1024 * 10,
         d: 1024 * 1024 * 1024 * 15,
@@ -281,7 +281,7 @@ proxies:
       final shopManager = ShopManager(dioClient: dioClient);
 
       final testUser = UserModel(
-        email: 'nick0425@gmail.com',
+        email: 'audit_user@tianhe.net',
         transferEnable: 1024 * 1024 * 1024 * 100,
         u: 1024 * 1024 * 1024 * 10,
         d: 1024 * 1024 * 1024 * 15,

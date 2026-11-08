@@ -2,23 +2,50 @@
 
 import 'package:yaml/yaml.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/error_sanitizer.dart';
 import 'node_model.dart';
 
-/// Mihomo (Clash.Meta) 設定檔生成器
+/// 路由設定檔生成器
 /// 將遠端節點資料整合轉換為符合核心規範之 YAML 設定檔
 class ConfigGenerator {
   static final RegExp _whitespaceRegex = RegExp(r'[\r\n\t]+');
 
-  /// 生成標準 Mihomo YAML 字串 (支援動態範本融合 Template Merging)
-  /// [singleNodeSlice]: 單節點動態切片 (防 Root 扒節點，顯式啟用時僅切片當前選中節點，預設 false 保證全量相容)
-  /// [templateYaml]: V2Board 下發之原始完整 default.clash.yaml 母體骨架 (若提供則 100% 繼承 DNS、策略組與自訂分流規則)
+  /// 範本 AST 快取：避免每次節點熱切換重新呼叫 `loadYaml` 解析 150KB+ 母體範本 (~200ms -> < 2ms)
+  static String? _cachedTemplateSource;
+  static Map<String, dynamic>? _cachedTemplateDoc;
+  static int _templateParseCount = 0;
+
+  static int get templateParseCountForTesting => _templateParseCount;
+
+  static void resetTemplateCacheForTesting() {
+    _cachedTemplateSource = null;
+    _cachedTemplateDoc = null;
+    _templateParseCount = 0;
+  }
+
+  static dynamic _cloneYamlNode(dynamic obj) {
+    if (obj is Map) {
+      final cloned = <String, dynamic>{};
+      obj.forEach((k, v) {
+        cloned[k.toString()] = _cloneYamlNode(v);
+      });
+      return cloned;
+    } else if (obj is List) {
+      return obj.map(_cloneYamlNode).toList();
+    }
+    return obj;
+  }
+
+  /// 生成標準核心 YAML 字串 (支援動態範本融合 Template Merging)
+  /// [singleNodeSlice]: 單節點動態切片 (顯式啟用時僅切片當前選中節點，預設 false 保證全量相容)
+  /// [templateYaml]: 下發之原始完整母體骨架 (若提供則 100% 繼承 DNS、策略組與自訂分流規則)
   static String generateYaml({
     required List<NodeModel> nodes,
     required String selectedNodeName,
     String routingMode = 'rule',
     int mixedPort = 7890,
     int controllerPort = 9090,
-    String secret = AppConstants.coreSecret,
+    String? secret,
     String? controllerSecret,
     bool singleNodeSlice = false,
     String? templateYaml,
@@ -69,28 +96,37 @@ class ConfigGenerator {
     final effectiveProxyNames = effectiveProxies.map((n) => n.name).toList();
     final effectiveSelectedName = targetNode.name;
 
-    // 2. 解析後端 templateYaml (若有提供)
+    // 2. 解析後端 templateYaml (若有提供，優先命中靜態 AST 快取以達成 < 2ms 熱切換)
     Map<String, dynamic>? templateDoc;
     if (templateYaml != null && templateYaml.trim().isNotEmpty) {
-      try {
-        final loaded = loadYaml(templateYaml);
-        if (loaded is Map) {
-          templateDoc = _deepCleanYaml(loaded) as Map<String, dynamic>;
+      if (identical(templateYaml, _cachedTemplateSource) || templateYaml == _cachedTemplateSource) {
+        if (_cachedTemplateDoc != null) {
+          templateDoc = _cloneYamlNode(_cachedTemplateDoc!) as Map<String, dynamic>;
         }
-      } catch (e) {
-        // ignore: avoid_print
-        print('[ConfigGenerator] 範本 YAML 解析失敗，將使用高品質預設範本兜底: $e');
+      } else {
+        try {
+          _templateParseCount++;
+          final loaded = loadYaml(templateYaml);
+          if (loaded is Map) {
+            final cleaned = _deepCleanYaml(loaded) as Map<String, dynamic>;
+            _cachedTemplateSource = templateYaml;
+            _cachedTemplateDoc = cleaned;
+            templateDoc = _cloneYamlNode(cleaned) as Map<String, dynamic>;
+          }
+        } catch (_) {
+          SafeLog.d('[ConfigGenerator] 範本 YAML 解析失敗，將使用預設安全範本兜底');
+        }
       }
     }
 
     final buffer = StringBuffer();
 
-    // 3. 基礎設定 (Android 必備參數覆蓋注入)
+    // 3. 基礎設定 (桌面與全平台必備參數覆蓋注入)
     final validMode = ['rule', 'global', 'direct'].contains(routingMode.toLowerCase())
         ? routingMode.toLowerCase()
         : 'rule';
 
-    buffer.writeln('# Tianhe Network Mihomo Configuration (Dynamic Template Merged)');
+    buffer.writeln('# Tianhe Network Routing Configuration (Dynamic Template Merged)');
     buffer.writeln('mixed-port: $mixedPort');
     buffer.writeln('allow-lan: false');
     buffer.writeln('mode: $validMode');
@@ -99,7 +135,7 @@ class ConfigGenerator {
     buffer.writeln('tcp-concurrent: true'); // GTM 多 IP 併發競速：自動握手最快健康 IP，0 秒剔除被牆 IP
     buffer.writeln('unified-delay: true'); // 統一代理真實 RTT 延遲測量
     buffer.writeln('external-controller: 127.0.0.1:$controllerPort');
-    final effectiveSecret = controllerSecret ?? secret;
+    final effectiveSecret = controllerSecret ?? secret ?? AppConstants.coreSecret;
     buffer.writeln('secret: "$effectiveSecret"');
     buffer.writeln('geo-auto-update: false'); // 防 GitHub 連線更新卡死
     buffer.writeln('geodata-mode: false');
@@ -178,10 +214,10 @@ class ConfigGenerator {
     }
     if (finalDns['fallback'] == null || (finalDns['fallback'] as List).isEmpty) {
       finalDns['fallback'] = [
-        'https://1.1.1.1/dns-query#PROXY',
-        'https://dns.google/dns-query#PROXY',
-        'https://doh.pub/dns-query',
-        'https://dns.alidns.com/dns-query',
+        AppConstants.cloudflareDnsOverHttpsFallback,
+        AppConstants.googleDnsOverHttpsFallback,
+        AppConstants.tencentDnsOverHttpsFallback,
+        AppConstants.aliDnsOverHttpsFallback,
       ];
     }
     if (finalDns['fallback-filter'] == null) {
@@ -537,9 +573,8 @@ class ConfigGenerator {
       }
 
       return result;
-    } catch (e) {
-      // ignore: avoid_print
-      print('[ConfigGenerator] YAML 解析失敗: $e');
+    } catch (_) {
+      SafeLog.d('[ConfigGenerator] YAML 解析失敗');
       return [];
     }
   }

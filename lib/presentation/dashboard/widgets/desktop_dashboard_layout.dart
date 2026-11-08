@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/error_sanitizer.dart';
 import '../../../business/auth/auth_manager.dart';
 import '../../../business/subscription/node_model.dart';
 import '../../../business/subscription/subscription_engine.dart';
@@ -428,7 +429,7 @@ class _DesktopDashboardLayoutState extends State<DesktopDashboardLayout>
                           children: [
                             Flexible(
                               child: Text(
-                                user?.email ?? 'nick0425@gmail.com',
+                                user?.email ?? I18nService.instance.t('guest_mode'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -1072,15 +1073,26 @@ class _DesktopDashboardLayoutState extends State<DesktopDashboardLayout>
                         final token = widget.authManager.state.token;
                         final u = widget.authManager.state.user;
                         if (token != null) {
-                          await widget.authManager.fetchUserInfo();
-                          await widget.subscriptionEngine.syncSubscription(
-                            token: token,
-                            customSubscribeUrl: u?.subscribeUrl,
-                          );
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(I18nService.instance.t('sub_synced_success'))),
+                          try {
+                            await widget.authManager.fetchUserInfo();
+                            await widget.subscriptionEngine.syncSubscription(
+                              token: token,
+                              customSubscribeUrl: u?.subscribeUrl,
                             );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(I18nService.instance.t('sub_synced_success'))),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${I18nService.instance.t('refresh_failed_prefix')}${ErrorSanitizer.sanitize(e)}'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
                           }
                         }
                       },
@@ -1186,16 +1198,22 @@ class _DesktopDashboardLayoutState extends State<DesktopDashboardLayout>
                 ),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    selectedNode != null
-                        ? '${selectedNode.cleanDisplayName} - ${selectedNode.protocol.toUpperCase()}'
-                        : (widget.isSyncing ? I18nService.instance.t('loading_nodes') : 'L1-荷兰 - ANYTLS'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                  child: Tooltip(
+                    message: selectedNode != null
+                        ? '${selectedNode.name} (${selectedNode.protocol.toUpperCase()})'
+                        : '',
+                    waitDuration: const Duration(milliseconds: 400),
+                    child: Text(
+                      selectedNode != null
+                          ? '${selectedNode.cleanDisplayName} - ${selectedNode.protocol.toUpperCase()}'
+                          : (widget.isSyncing ? I18nService.instance.t('loading_nodes') : I18nService.instance.t('node_unselected')),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -1754,9 +1772,9 @@ class _DesktopDashboardLayoutState extends State<DesktopDashboardLayout>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildDiagItem(i18n.t('diag_local_nic'), '192.168.x.x', _emeraldGreen),
-            _buildDiagItem(i18n.t('diag_sys_proxy'), widget.coreDaemon.state.isConnected ? '127.0.0.1:7890' : i18n.t('status_disconnected'), _neonBlue),
-            _buildDiagItem(i18n.t('diag_core_controller'), widget.coreDaemon.state.isConnected ? '127.0.0.1:9090' : i18n.t('status_disconnected'), _emeraldGreen),
-            _buildDiagItem(i18n.t('diag_doh_anti'), 'Cloudflare / Google DoH', _emeraldGreen),
+            _buildDiagItem(i18n.t('diag_sys_proxy'), widget.coreDaemon.state.isConnected ? i18n.t('diag_sys_proxy_active') : i18n.t('status_disconnected'), _neonBlue),
+            _buildDiagItem(i18n.t('diag_core_controller'), widget.coreDaemon.state.isConnected ? i18n.t('diag_controller_active') : i18n.t('status_disconnected'), _emeraldGreen),
+            _buildDiagItem(i18n.t('diag_doh_anti'), i18n.t('doh_multi_tier_active'), _emeraldGreen),
           ],
         ),
         actions: [

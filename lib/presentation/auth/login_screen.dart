@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../business/auth/auth_manager.dart';
 import '../../business/auth/user_model.dart';
 import '../../infrastructure/config/app_config_service.dart';
@@ -89,34 +90,10 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } catch (e) {
-      // 支援雲端自動化測試與演示模式 (demo 或 test 帳號在離線環境下進入主控台)
-      if (_fullEmail.contains('demo') || _fullEmail.startsWith('test') || Platform.environment.containsKey('TIANHE_DEMO')) {
-        final mockUser = UserModel(
-          email: _fullEmail,
-          transferEnable: 96636764160,
-          u: 16019,
-          d: 2380236,
-          expiredAt: 1799795116,
-          planName: '特殊私有套餐(直接续费)',
-        );
-        widget.authManager.updateUserForTest(mockUser);
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => DashboardScreen(
-                authManager: widget.authManager,
-                configService: widget.configService,
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = ErrorSanitizer.sanitize(e);
         });
       }
     }

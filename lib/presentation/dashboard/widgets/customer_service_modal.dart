@@ -13,6 +13,7 @@ import '../../../business/auth/auth_manager.dart';
 import '../../../business/auth/user_model.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/i18n/i18n_service.dart';
+import '../../../core/utils/error_sanitizer.dart';
 import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/theme/app_theme.dart';
 
@@ -42,7 +43,7 @@ class CustomerServiceModal extends StatefulWidget {
         : AppConstants.crispWebsiteId;
 
     if (user == null || user.email.trim().isEmpty) {
-      return 'https://go.crisp.chat/chat/embed/?website_id=$id';
+      return '${AppConstants.crispEmbedBaseUrl}?website_id=$id';
     }
 
     final email = user.email.trim();
@@ -54,7 +55,7 @@ class CustomerServiceModal extends StatefulWidget {
     final encodedEmail = Uri.encodeComponent(email);
     final encodedNickname = Uri.encodeComponent(email);
 
-    return 'https://go.crisp.chat/chat/embed/?website_id=$id&user_email=$encodedEmail&user_nickname=$encodedNickname&token_id=$tokenHash';
+    return '${AppConstants.crispEmbedBaseUrl}?website_id=$id&user_email=$encodedEmail&user_nickname=$encodedNickname&token_id=$tokenHash';
   }
 
   /// 靜態會話清理方法 (供登出或 401 攔截時呼叫，徹底防止多帳號串號)
@@ -118,7 +119,7 @@ class CustomerServiceModal extends StatefulWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('開啟外部瀏覽器失敗: $e'),
+              content: Text('${I18nService.instance.t('open_browser_failed_prefix')}${ErrorSanitizer.sanitize(e)}'),
               backgroundColor: Colors.redAccent,
             ),
           );
@@ -160,10 +161,7 @@ class _CustomerServiceModalState extends State<CustomerServiceModal> {
 
   Future<void> _initWebView() async {
     try {
-      final osVersion =
-          '${Platform.operatingSystem} ${Platform.operatingSystemVersion}'
-              .trim();
-      final customUserAgent =
+      const customUserAgent =
           '天河網絡/${AppConstants.appVersion} (Macintosh; Mac OS X; Apple Silicon/Intel; Build ${AppConstants.appBuildNumber}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
       _controller = WebViewController()
@@ -186,7 +184,7 @@ class _CustomerServiceModalState extends State<CustomerServiceModal> {
             onWebResourceError: (WebResourceError error) {
               if (mounted) {
                 setState(() {
-                  _errorMessage = error.description;
+                  _errorMessage = ErrorSanitizer.sanitize(error.description);
                   _isLoading = false;
                 });
               }
@@ -216,7 +214,7 @@ class _CustomerServiceModalState extends State<CustomerServiceModal> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'WebView 初始化失敗: $e';
+          _errorMessage = '${I18nService.instance.t('webview_init_failed_prefix')}${ErrorSanitizer.sanitize(e)}';
           _isLoading = false;
         });
       }
@@ -291,7 +289,7 @@ class _CustomerServiceModalState extends State<CustomerServiceModal> {
 ''';
       await _controller.runJavaScript(jsCode);
     } catch (e) {
-      debugPrint('[CustomerServiceModal] JS SDK 注入異常: $e');
+      SafeLog.d('[CustomerServiceModal] JS SDK 注入異常: ${ErrorSanitizer.sanitize(e)}');
     }
   }
 
@@ -384,7 +382,9 @@ class _CustomerServiceModalState extends State<CustomerServiceModal> {
                         color: Colors.amber, size: 56),
                     const SizedBox(height: 16),
                     Text(
-                      '無法載入內嵌聊天視窗 ($_errorMessage)',
+                      _errorMessage != null
+                          ? '${i18n.t('crisp_embed_load_failed')} (${ErrorSanitizer.scrubSensitiveText(_errorMessage!)})'
+                          : i18n.t('crisp_embed_load_failed'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white70),
                     ),

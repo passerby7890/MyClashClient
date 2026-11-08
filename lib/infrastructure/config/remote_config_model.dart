@@ -4,7 +4,7 @@ import 'dart:convert';
 import '../../core/constants/app_constants.dart';
 
 /// 遠端動態配置資料模型
-/// 由 OSS / DoH 解析之 Base64 或 AES 解密後還原產生
+/// 由加密配置端點解析之 Base64 或 AES 解密後還原產生
 class RemoteConfigModel {
   final String apiDomain;
   final List<String> backupApiDomains;
@@ -13,6 +13,10 @@ class RemoteConfigModel {
   final String? apkUrl;
   final String? exeUrl;
   final String? dmgUrl;
+  final String? apkSha256;
+  final String? exeSha256;
+  final String? dmgSha256;
+  final String? signature;
   final String? changelog;
   final String? websiteUrl;
   final String? appName;
@@ -25,6 +29,7 @@ class RemoteConfigModel {
   final bool enableOnlineTicket;
   final List<dynamic> carouselItems;
   final List<dynamic> campusHosts;
+  final dynamic bootstrapProxy;
 
   const RemoteConfigModel({
     required this.apiDomain,
@@ -34,6 +39,10 @@ class RemoteConfigModel {
     this.apkUrl,
     this.exeUrl,
     this.dmgUrl,
+    this.apkSha256,
+    this.exeSha256,
+    this.dmgSha256,
+    this.signature,
     this.changelog,
     this.websiteUrl,
     this.appName,
@@ -46,6 +55,7 @@ class RemoteConfigModel {
     this.enableOnlineTicket = true,
     this.carouselItems = const [],
     this.campusHosts = const [],
+    this.bootstrapProxy,
   });
 
   /// 取得所有可用 API 網域陣列 (主要網域在前，備用網域在後，自動排除靜態門戶網域)
@@ -76,7 +86,7 @@ class RemoteConfigModel {
     return list;
   }
 
-  /// 從 JSON Map 建構 (相容標準 V2Board 與 OpenClash / Tianhe 生成器格式)
+  /// 從 JSON Map 建構 (相容標準格式與動態配置格式)
   factory RemoteConfigModel.fromJson(Map<String, dynamic> json) {
     List<String> parseBackups(dynamic raw) {
       if (raw is List) {
@@ -85,15 +95,13 @@ class RemoteConfigModel {
       return [];
     }
 
-    // 支援 OpenClash / Tianhe (host_source / hosts)
     final hostSource = json['host_source']?.toString().trim();
     final hosts = parseBackups(json['hosts']);
 
     String apiDomain = json['api_domain'] as String? ?? '';
     List<String> backupApiDomains = parseBackups(json['backup_api_domains']);
 
-    // 關鍵修正：OpenClash / Tianhe 規範中，hosts 陣列才是真實 API 伺服器！
-    // host_source 是官網/門戶前台 (Nginx 靜態頁，不提供 API，請求會回傳 404)。
+    // hosts 陣列為真實 API 伺服器，host_source 為官網前台
     if (apiDomain.isEmpty && hosts.isNotEmpty) {
       apiDomain = hosts.first;
       final remainingHosts = hosts.sublist(1);
@@ -112,7 +120,6 @@ class RemoteConfigModel {
       apiDomain = AppConstants.fallbackApiDomains.first;
     }
 
-    // 清理結尾斜線並過濾非 API 門戶
     while (apiDomain.endsWith('/')) {
       apiDomain = apiDomain.substring(0, apiDomain.length - 1);
     }
@@ -131,11 +138,15 @@ class RemoteConfigModel {
     return RemoteConfigModel(
       apiDomain: apiDomain,
       backupApiDomains: backupApiDomains,
-      latestVersion: json['latest_version'] as String? ?? AppConstants.appVersion,
+      latestVersion: json['latest_version'] as String? ?? '1.0.0',
       minVersion: json['min_version'] as String? ?? '1.0.0',
       apkUrl: (json['apk_url'] ?? json['UpdateUrl']) as String?,
-      exeUrl: (json['exe_url'] ?? json['windows_url'] ?? json['win_url'] ?? json['ExeUrl']) as String?,
+      exeUrl: (json['exe_url'] ?? json['win_url'] ?? json['windows_url'] ?? json['exeUrl']) as String?,
       dmgUrl: (json['dmg_url'] ?? json['mac_url'] ?? json['macos_url'] ?? json['dmgUrl']) as String?,
+      apkSha256: (json['apk_sha256'] ?? json['sha256']) as String?,
+      exeSha256: json['exe_sha256'] as String?,
+      dmgSha256: (json['dmg_sha256'] ?? json['mac_sha256']) as String?,
+      signature: (json['sig'] ?? json['signature']) as String?,
       changelog: json['changelog'] as String?,
       websiteUrl: hostSource ?? (json['website_url'] as String?),
       appName: (json['Authentication'] ?? json['app_name']) as String?,
@@ -148,6 +159,7 @@ class RemoteConfigModel {
       enableOnlineTicket: parseBool(json['OnlineTicket'], true),
       carouselItems: (json['Carousel'] as List?) ?? const [],
       campusHosts: (json['campusHosts'] as List?) ?? const [],
+      bootstrapProxy: json['bootstrap_proxy'] ?? json['bootstrapProxy'],
     );
   }
 
@@ -164,12 +176,16 @@ class RemoteConfigModel {
         'apk_url': apkUrl,
         'exe_url': exeUrl,
         'dmg_url': dmgUrl,
+        'apk_sha256': apkSha256,
+        'exe_sha256': exeSha256,
+        'sig': signature,
         'changelog': changelog,
         'host_source': websiteUrl,
         'website_url': websiteUrl,
         'Authentication': appName,
         'Customer': customerUrl,
         'crisp': crispId,
+        'bootstrap_proxy': bootstrapProxy,
         'InviteLink': inviteLink,
         'notice': enableNotice ? 1 : 0,
         'exchange': enableExchange ? 1 : 0,
@@ -231,6 +247,6 @@ class RemoteConfigModel {
 
   @override
   String toString() {
-    return 'RemoteConfigModel(apiDomain: $apiDomain, backupApiDomains: $backupApiDomains, latestVersion: $latestVersion)';
+    return 'RemoteConfigModel(latestVersion: $latestVersion, minVersion: $minVersion, routes: ${allApiDomains.length})';
   }
 }

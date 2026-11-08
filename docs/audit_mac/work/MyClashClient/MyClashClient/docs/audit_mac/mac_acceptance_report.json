@@ -1,0 +1,249 @@
+{
+  "timestamp": "2026-10-21T15:22:39Z",
+  "total": 30,
+  "passed": 30,
+  "failed": 0,
+  "pass_rate": "100.0%",
+  "results": [
+    {
+      "id": "01",
+      "category": "維度 1: 應用封裝",
+      "title": "Tianhe.app 完整性驗證",
+      "status": "PASS",
+      "duration_ms": 0.04,
+      "details": "Tianhe.app 結構完整, 主二進位大小: 2666176 bytes"
+    },
+    {
+      "id": "02",
+      "category": "維度 1: 應用封裝",
+      "title": "DMG 安裝映像檔體積驗證",
+      "status": "PASS",
+      "duration_ms": 0.02,
+      "details": "DMG 映像檔正常, 體積: 83.71 MB"
+    },
+    {
+      "id": "03",
+      "category": "維度 1: 應用封裝",
+      "title": "macOS codesign 代碼簽名驗證",
+      "status": "PASS",
+      "duration_ms": 5.8,
+      "details": "codesign 簽名檢查通過"
+    },
+    {
+      "id": "04",
+      "category": "維度 1: 應用封裝",
+      "title": "Entitlements 沙盒與權限驗證",
+      "status": "PASS",
+      "duration_ms": 4.94,
+      "details": "Entitlements 許可權限符合自由度規範"
+    },
+    {
+      "id": "05",
+      "category": "維度 1: 應用封裝",
+      "title": "Info.plist 品牌去特徵化驗證",
+      "status": "PASS",
+      "duration_ms": 0.88,
+      "details": "CFBundleName: Tianhe, BundleId: com.tianhe.cloud.assistant.macos 去特徵化完畢"
+    },
+    {
+      "id": "06",
+      "category": "維度 1: 應用封裝",
+      "title": "Mihomo 與離線庫完整嵌入驗證",
+      "status": "PASS",
+      "duration_ms": 0.08,
+      "details": "mihomo 可執行檔與離線庫已封裝: ['Country.mmdb', 'GeoIP.dat', 'GeoSite.dat']"
+    },
+    {
+      "id": "07",
+      "category": "維度 2: 核心代理",
+      "title": "Mihomo Darwin 內核拉起驗證",
+      "status": "PASS",
+      "duration_ms": 1377.05,
+      "details": "Mihomo 進程 PID=10500 已順暢啟動"
+    },
+    {
+      "id": "08",
+      "category": "維度 2: 核心代理",
+      "title": "7890 混合代理端口監聽驗證",
+      "status": "PASS",
+      "duration_ms": 4.84,
+      "details": "127.0.0.1:7890 (HTTP/SOCKS5) 監聽正常"
+    },
+    {
+      "id": "09",
+      "category": "維度 2: 核心代理",
+      "title": "9090 控制器端口監聽驗證",
+      "status": "PASS",
+      "duration_ms": 0.08,
+      "details": "127.0.0.1:9090 REST API 監聽正常"
+    },
+    {
+      "id": "10",
+      "category": "維度 2: 核心代理",
+      "title": "networksetup HTTP 系統代理掛載",
+      "status": "PASS",
+      "duration_ms": 81.31,
+      "details": "networksetup HTTP 代理已掛載至 Ethernet"
+    },
+    {
+      "id": "11",
+      "category": "維度 2: 核心代理",
+      "title": "networksetup HTTPS 系統代理掛載",
+      "status": "PASS",
+      "duration_ms": 64.29,
+      "details": "networksetup HTTPS 代理已掛載至 Ethernet"
+    },
+    {
+      "id": "12",
+      "category": "維度 2: 核心代理",
+      "title": "networksetup SOCKS 系統代理掛載",
+      "status": "PASS",
+      "duration_ms": 59.63,
+      "details": "networksetup SOCKS 代理已掛載至 Ethernet"
+    },
+    {
+      "id": "13",
+      "category": "維度 2: 核心代理",
+      "title": "scutil --proxy 歸零與防斷網閉環",
+      "status": "PASS",
+      "duration_ms": 90.06,
+      "details": "scutil --proxy 驗證代理狀態已徹底歸零 (100% 防斷網閉環)"
+    },
+    {
+      "id": "14",
+      "category": "維度 2: 核心代理",
+      "title": "孤兒進程與端口釋放清空",
+      "status": "PASS",
+      "duration_ms": 438.56,
+      "details": "孤兒 Mihomo 進程已全部乾淨釋放"
+    },
+    {
+      "id": "15",
+      "category": "維度 3: 毫秒熱切",
+      "title": "熱切換 Mihomo 核心重啟",
+      "status": "PASS",
+      "duration_ms": 1374.93,
+      "details": "Mihomo 進程 PID=10528 已順暢啟動"
+    },
+    {
+      "id": "16",
+      "category": "維度 3: 毫秒熱切",
+      "title": "VLESS 協議記憶體熱重載 (<150ms)",
+      "status": "PASS",
+      "duration_ms": 14.87,
+      "details": "VLESS 記憶體熱重載成功, 耗時: 14.51ms, 狀態: 204"
+    },
+    {
+      "id": "17",
+      "category": "維度 3: 毫秒熱切",
+      "title": "Trojan 協議記憶體熱重載 (<150ms)",
+      "status": "PASS",
+      "duration_ms": 2.23,
+      "details": "Trojan 記憶體熱重載成功, 耗時: 2.16ms, 狀態: 204"
+    },
+    {
+      "id": "18",
+      "category": "維度 3: 毫秒熱切",
+      "title": "Hysteria2 協議記憶體熱重載 (<150ms)",
+      "status": "PASS",
+      "duration_ms": 2.15,
+      "details": "Hysteria2 記憶體熱重載成功, 耗時: 2.10ms, 狀態: 204"
+    },
+    {
+      "id": "19",
+      "category": "維度 3: 毫秒熱切",
+      "title": "舊 TCP 連線即刻斬斷 (DELETE /connections)",
+      "status": "PASS",
+      "duration_ms": 0.35,
+      "details": "舊有 TCP 連線即刻斬斷 (204 No Content), 耗時: 0.31ms"
+    },
+    {
+      "id": "20",
+      "category": "維度 3: 毫秒熱切",
+      "title": "10 分鐘智慧背景同步與範本融合",
+      "status": "PASS",
+      "duration_ms": 0.19,
+      "details": "10 分鐘背景靜默同步 (Diff Check 不中斷連線) 代碼邏輯驗證通過"
+    },
+    {
+      "id": "21",
+      "category": "維度 4: Bento UI",
+      "title": "1200x780 黃金視窗與深色主題鎖定",
+      "status": "PASS",
+      "duration_ms": 0.04,
+      "details": "1200x780 黃金比例 Bento 視窗與深色主題設置正確"
+    },
+    {
+      "id": "22",
+      "category": "維度 4: Bento UI",
+      "title": "8 大純桌面 Bento 分家視圖就位",
+      "status": "PASS",
+      "duration_ms": 0.07,
+      "details": "8 大純桌面 Bento 獨立視圖全部就位: 8/8"
+    },
+    {
+      "id": "23",
+      "category": "維度 4: Bento UI",
+      "title": "4 國語言國際化辭庫覆蓋",
+      "status": "PASS",
+      "duration_ms": 0.36,
+      "details": "4 國語言 (繁中/簡中/英文/日文) 國際化辭庫覆蓋率 100%"
+    },
+    {
+      "id": "24",
+      "category": "維度 4: Bento UI",
+      "title": "249 國地圖經緯投影與國旗碼完整性",
+      "status": "PASS",
+      "duration_ms": 0.13,
+      "details": "249 國經緯度幾何投影地圖組件正常載入"
+    },
+    {
+      "id": "25",
+      "category": "維度 4: Bento UI",
+      "title": "主頁與節點管理頁即時刷新按鈕",
+      "status": "PASS",
+      "duration_ms": 0.21,
+      "details": "主頁與節點管理視圖均包含即時同步訂閱按鈕"
+    },
+    {
+      "id": "26",
+      "category": "維度 4: Bento UI",
+      "title": "Crisp 在線客服動態元資料整合",
+      "status": "PASS",
+      "duration_ms": 0.06,
+      "details": "Crisp 在線客服動態元資料綁定完備"
+    },
+    {
+      "id": "27",
+      "category": "維度 5: 資安防護",
+      "title": "未授權訪問攔截 (401 Unauthorized)",
+      "status": "PASS",
+      "duration_ms": 0.38,
+      "details": "未帶 Secret 訪問 9090 必返 401 Unauthorized，安全防窺探生效"
+    },
+    {
+      "id": "28",
+      "category": "維度 5: 資安防護",
+      "title": "合法 Token 訪問驗證 (200 OK)",
+      "status": "PASS",
+      "duration_ms": 0.51,
+      "details": "帶合法 Secret 訪問 9090 正常響應 200 OK"
+    },
+    {
+      "id": "29",
+      "category": "維度 5: 資安防護",
+      "title": "敏感設定檔閱後即焚物理抹除",
+      "status": "PASS",
+      "duration_ms": 0.3,
+      "details": "閱後即焚 (Read-and-Shred) 物理抹除驗證通過 (0 明文殘留)"
+    },
+    {
+      "id": "30",
+      "category": "維度 5: 資安防護",
+      "title": "系統崩潰日誌巡檢與記憶體健康度",
+      "status": "PASS",
+      "duration_ms": 364.6,
+      "details": "系統 DiagnosticReports 診斷健康，無阻塞性 Fatal Crash"
+    }
+  ]
+}

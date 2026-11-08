@@ -9,6 +9,7 @@ import '../../business/auth/auth_manager.dart';
 import '../../business/subscription/subscription_engine.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
 import '../../infrastructure/core_daemon/windows_proxy_service.dart';
@@ -49,10 +50,27 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
   void initState() {
     super.initState();
     _selectedMode = widget.subscriptionEngine.routingMode;
+    widget.subscriptionEngine.addListener(_onEngineOrCoreChanged);
+    widget.coreDaemon.addListener(_onEngineOrCoreChanged);
     _loadSettings();
-    if (!kIsWeb && (Platform.isMacOS || Platform.isWindows)) {
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS)) {
       _loadWindowsSettings();
     }
+  }
+
+  void _onEngineOrCoreChanged() {
+    if (mounted) {
+      setState(() {
+        _selectedMode = widget.subscriptionEngine.routingMode;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.subscriptionEngine.removeListener(_onEngineOrCoreChanged);
+    widget.coreDaemon.removeListener(_onEngineOrCoreChanged);
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -93,7 +111,7 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${I18nService.instance.t('check_update_failed')}: $e')),
+          SnackBar(content: Text('${I18nService.instance.t('check_update_failed')}: ${ErrorSanitizer.sanitize(e)}')),
         );
       }
     } finally {
@@ -128,24 +146,32 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                   borderRadius: BorderRadius.circular(DesktopThemeTokens.cardRadius),
                   border: Border.all(color: DesktopThemeTokens.borderMuted),
                 ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.alt_route_rounded, color: DesktopThemeTokens.accentCyan, size: 20),
-                      const SizedBox(width: 10),
-                      Text(
-                        i18n.t('more_routing_mode'),
-                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                child: Row(
+                  children: [
+                    const Icon(Icons.alt_route_rounded, color: DesktopThemeTokens.accentCyan, size: 20),
+                    const SizedBox(width: 10),
+                    Text(
+                      i18n.t('more_routing_mode'),
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildModeChip('rule', Icons.rule_rounded, i18n.t('more_mode_rule')),
+                            const SizedBox(width: 8),
+                            _buildModeChip('global', Icons.public_rounded, i18n.t('more_mode_global')),
+                            const SizedBox(width: 8),
+                            _buildModeChip('direct', Icons.arrow_outward_rounded, i18n.t('more_mode_direct')),
+                            const SizedBox(width: 8),
+                            _buildModeChip('tun', Icons.security_rounded, i18n.t('more_mode_tun')),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      _buildModeChip('rule', Icons.rule_rounded, i18n.t('more_mode_rule')),
-                      const SizedBox(width: 8),
-                      _buildModeChip('global', Icons.public_rounded, i18n.t('more_mode_global')),
-                      const SizedBox(width: 8),
-                      _buildModeChip('direct', Icons.arrow_outward_rounded, i18n.t('more_mode_direct')),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: DesktopThemeTokens.spacing),
@@ -250,7 +276,9 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                           _buildActionTile(
                             icon: Icons.terminal_rounded,
                             title: i18n.t('more_core_daemon'),
-                            subtitle: widget.coreDaemon.state.isConnected ? i18n.t('status_connected') : i18n.t('status_disconnected'),
+                            subtitle: widget.coreDaemon.state.isConnected
+                                ? i18n.t('status_connected_badge')
+                                : i18n.t('status_disconnected_badge'),
                             trailing: Container(
                               width: 8,
                               height: 8,
@@ -265,11 +293,11 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                           _buildActionTile(
                             icon: Icons.security_rounded,
                             title: i18n.t('more_doh_protection'),
-                            subtitle: 'Cloudflare / Google DoH',
+                            subtitle: i18n.t('doh_multi_tier_active'),
                             trailing: const Icon(Icons.check_circle_rounded, color: DesktopThemeTokens.successColor, size: 16),
                             onTap: () {},
                           ),
-                          if (!kIsWeb && (Platform.isMacOS || Platform.isWindows)) ...[
+                          if (!kIsWeb && (Platform.isWindows || Platform.isMacOS)) ...[
                             const Divider(color: Colors.white10, height: 1),
                             _buildActionTile(
                               icon: Icons.power_settings_new_rounded,
@@ -280,6 +308,7 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                                 activeColor: DesktopThemeTokens.accentCyan,
                                 onChanged: (val) async {
                                   final ok = await WindowsProxyService.instance.setAutoStart(val);
+                                  if (!mounted) return;
                                   if (ok) {
                                     setState(() => _isAutoStart = val);
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -358,6 +387,81 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
     final isSelected = _selectedMode == mode;
     return InkWell(
       onTap: () async {
+        final i18n = I18nService.instance;
+        if (mode == 'tun' && !kIsWeb && Platform.isWindows) {
+          final hasWintun = await WindowsProxyService.instance.isWintunAvailable();
+          if (!hasWintun) {
+            if (!mounted) return;
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: DesktopThemeTokens.cardSurface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: DesktopThemeTokens.borderMuted),
+                ),
+                title: Text(i18n.t('tun_driver_missing_title'), style: const TextStyle(color: Colors.white, fontSize: 16)),
+                content: Text(i18n.t('tun_driver_missing_desc'), style: const TextStyle(color: Colors.white70, fontSize: 13.5)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(i18n.t('confirm'), style: const TextStyle(color: DesktopThemeTokens.accentCyan)),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+          final isAdmin = await WindowsProxyService.instance.isRunningAsAdmin();
+          if (!isAdmin) {
+            if (!mounted) return;
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: DesktopThemeTokens.cardSurface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: DesktopThemeTokens.borderMuted),
+                ),
+                title: Row(
+                  children: [
+                    const Icon(Icons.admin_panel_settings_rounded, color: DesktopThemeTokens.amberWarn, size: 22),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        i18n.t('tun_admin_required_title'),
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  i18n.t('tun_admin_required_desc'),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.5),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(i18n.t('cancel'), style: const TextStyle(color: Colors.white54)),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      WindowsProxyService.instance.restartAsAdmin();
+                    },
+                    icon: const Icon(Icons.security_rounded, size: 16),
+                    label: Text(i18n.t('tun_admin_restart_btn')),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DesktopThemeTokens.accentCyan,
+                      foregroundColor: Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+        }
         setState(() => _selectedMode = mode);
         await widget.subscriptionEngine.setRoutingMode(mode);
       },
@@ -421,20 +525,16 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                 child: Icon(icon, color: DesktopThemeTokens.accentCyan, size: 16),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
+              Text(
+                title,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Expanded(
             child: ListView(
-              physics: const NeverScrollableScrollPhysics(),
+              physics: const ClampingScrollPhysics(),
               children: children,
             ),
           ),
@@ -466,14 +566,10 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
         ),
         title: Text(
           title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white),
         ),
         subtitle: Text(
           subtitle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.45)),
         ),
         trailing: trailing ?? const Icon(Icons.chevron_right_rounded, color: Colors.white30, size: 18),

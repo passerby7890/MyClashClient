@@ -5,6 +5,7 @@ import '../../business/shop/order_model.dart';
 import '../../business/shop/plan_model.dart';
 import '../../business/shop/shop_manager.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../shop/order_history_screen.dart';
 import '../shop/order_payment_screen.dart';
 import 'desktop_theme_tokens.dart';
@@ -114,14 +115,20 @@ class _DesktopStoreViewState extends State<DesktopStoreView> {
                       final isSelected = p.key == selectedPeriodKey;
                       return ChoiceChip(
                         selected: isSelected,
-                        label: Text('${p.label} ${p.formattedPrice}'),
+                        showCheckmark: false,
+                        label: Text('${p.localizedLabel(i18n)} ${p.formattedPrice}'),
                         labelStyle: TextStyle(
-                          fontSize: 12,
+                          fontSize: 12.5,
                           color: isSelected ? Colors.black : Colors.white,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                         ),
                         selectedColor: DesktopThemeTokens.neonCyan,
                         backgroundColor: DesktopThemeTokens.cardInnerBg,
+                        side: BorderSide(
+                          color: isSelected ? DesktopThemeTokens.neonCyan : DesktopThemeTokens.borderColor,
+                          width: isSelected ? 1.2 : 1.0,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         onSelected: (val) {
                           if (val) setDialogState(() => selectedPeriodKey = p.key);
                         },
@@ -212,7 +219,7 @@ class _DesktopStoreViewState extends State<DesktopStoreView> {
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('${i18n.t('order_failed_prefix')}: $e')),
+              SnackBar(content: Text('${i18n.t('order_failed_prefix')}: ${ErrorSanitizer.sanitize(e)}')),
             );
           }
         }
@@ -352,7 +359,7 @@ class _DesktopStoreViewState extends State<DesktopStoreView> {
                           } catch (e) {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('${i18n.t('order_failed_prefix')}: $e')),
+                                SnackBar(content: Text('${i18n.t('order_failed_prefix')}: ${ErrorSanitizer.sanitize(e)}')),
                               );
                               _loadPlans();
                             }

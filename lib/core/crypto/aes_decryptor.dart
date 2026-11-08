@@ -2,6 +2,7 @@
 
 import 'package:encrypt/encrypt.dart' as enc;
 import '../constants/app_constants.dart';
+import '../utils/error_sanitizer.dart';
 
 /// AES-256-CBC 解密工具類別
 /// 遵循 PKCS7 Padding 規範，專門用於解密 DNS TXT 紀錄獲取的防封鎖設定資料
@@ -40,7 +41,7 @@ class AesDecryptor {
       final decrypted = encrypter.decrypt64(sanitized, iv: _iv);
       return decrypted;
     } catch (e) {
-      throw FormatException('AES-256 解密失敗: ${e.toString()} (請檢查金鑰與 IV 是否匹配)');
+      throw FormatException('AES-256 解密失敗: ${ErrorSanitizer.sanitize(e)}');
     }
   }
 
@@ -58,7 +59,7 @@ class AesDecryptor {
       final encrypted = encrypter.encrypt(plainText, iv: _iv);
       return encrypted.base64;
     } catch (e) {
-      throw FormatException('AES-256 加密失敗: ${e.toString()}');
+      throw FormatException('AES-256 加密失敗: ${ErrorSanitizer.sanitize(e)}');
     }
   }
 

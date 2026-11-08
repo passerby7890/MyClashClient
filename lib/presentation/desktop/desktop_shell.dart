@@ -8,6 +8,7 @@ import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
 import '../dashboard/widgets/customer_service_modal.dart';
 import '../dashboard/widgets/notice_dialog.dart';
+import '../more/widgets/diagnostics_modal.dart';
 import 'desktop_affiliate_view.dart';
 import 'desktop_connections_view.dart';
 import 'desktop_home_view.dart';
@@ -144,61 +145,36 @@ class _DesktopShellState extends State<DesktopShell> {
   }
 
   void _showNetworkDiagnostics() {
-    final i18n = I18nService.instance;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: DesktopThemeTokens.cardSurface,
-        title: Row(
-          children: [
-            const Icon(Icons.network_check_rounded, color: DesktopThemeTokens.accentCyan),
-            const SizedBox(width: 8),
-            Text(i18n.t('more_diagnostics'), style: const TextStyle(color: Colors.white, fontSize: 16)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDiagItem(i18n.t('diag_local_nic'), '127.0.0.1', DesktopThemeTokens.successColor),
-            _buildDiagItem(
-              i18n.t('diag_sys_proxy'),
-              widget.coreDaemon.state.isConnected ? '127.0.0.1:7890' : i18n.t('status_disconnected'),
-              DesktopThemeTokens.neonBlue,
-            ),
-            _buildDiagItem(
-              i18n.t('diag_core_controller'),
-              widget.coreDaemon.state.isConnected ? '127.0.0.1:9090' : i18n.t('status_disconnected'),
-              DesktopThemeTokens.successColor,
-            ),
-            _buildDiagItem(i18n.t('diag_doh_anti'), 'Cloudflare / Google DoH', DesktopThemeTokens.successColor),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(i18n.t('confirm'), style: const TextStyle(color: DesktopThemeTokens.accentCyan)),
-          ),
-        ],
-      ),
+    DiagnosticsModal.show(
+      context,
+      coreDaemon: widget.coreDaemon,
+      configService: widget.configService,
     );
   }
 
-  Widget _buildDiagItem(String label, String value, Color statusColor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: DesktopThemeTokens.textMuted, fontSize: 12.5)),
-          const SizedBox(width: 16),
-          Text(
-            value,
-            style: TextStyle(color: statusColor, fontSize: 12.5, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
+  Future<void> _handleOfflineToggle(bool val) async {
+    final i18n = I18nService.instance;
+    setState(() => _offlineMode = val);
+    widget.subscriptionEngine.setOfflinePause(val);
+    if (val && (widget.coreDaemon.state.isConnected || widget.coreDaemon.state.isConnecting)) {
+      await widget.coreDaemon.stop();
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(val ? i18n.t('offline_mode_enabled_snack') : i18n.t('offline_mode_disabled_snack')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _handleToggleConnectionWithOfflineGuard() {
+    if (_offlineMode) {
+      setState(() => _offlineMode = false);
+      widget.subscriptionEngine.setOfflinePause(false);
+    }
+    widget.onToggleConnection();
   }
 
   void _showDailyCheckIn() {
@@ -331,20 +307,23 @@ class _DesktopShellState extends State<DesktopShell> {
                         ),
                         child: const Icon(Icons.shield_rounded, color: Colors.white, size: 19),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Row(
                           children: [
-                            Flexible(
-                              child: Text(
-                                i18n.t('app_title'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.3,
+                            Expanded(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  i18n.t('app_title'),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.2,
+                                  ),
                                 ),
                               ),
                             ),
@@ -422,9 +401,7 @@ class _DesktopShellState extends State<DesktopShell> {
                           child: Switch(
                             value: _offlineMode,
                             activeColor: DesktopThemeTokens.neonBlue,
-                            onChanged: (val) {
-                              setState(() => _offlineMode = val);
-                            },
+                            onChanged: _handleOfflineToggle,
                           ),
                         ),
                       ],
@@ -483,46 +460,54 @@ class _DesktopShellState extends State<DesktopShell> {
                   ),
                   child: Row(
                     children: [
-                      // 左側頁面標題
-                      Flexible(
-                        child: Text(
-                          _getPageTitle(_activeNavIndex),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      // 左側頁面標題與連線狀態膠囊
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                _getPageTitle(_activeNavIndex),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: widget.coreDaemon.state.isConnected
+                                    ? DesktopThemeTokens.successColor.withOpacity(0.12)
+                                    : Colors.white.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                widget.coreDaemon.state.isConnected
+                                    ? i18n.t('status_connected_badge')
+                                    : (widget.coreDaemon.state.isConnecting
+                                        ? i18n.t('status_connecting_badge')
+                                        : i18n.t('status_disconnected_badge')),
+                                style: TextStyle(
+                                  color: widget.coreDaemon.state.isConnected
+                                      ? DesktopThemeTokens.successColor
+                                      : DesktopThemeTokens.textMuted,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          widget.coreDaemon.state.isConnected
-                              ? i18n.t('status_connected')
-                              : (widget.coreDaemon.state.isConnecting
-                                  ? i18n.t('status_connecting')
-                                  : i18n.t('status_disconnected')),
-                          style: TextStyle(
-                            color: widget.coreDaemon.state.isConnected
-                                ? DesktopThemeTokens.successColor
-                                : DesktopThemeTokens.textMuted,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-
-                      const Spacer(),
 
                       // 用戶卡片膠囊
                       Container(
+                        constraints: const BoxConstraints(maxWidth: 260),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: DesktopThemeTokens.cardSurface,
@@ -538,45 +523,35 @@ class _DesktopShellState extends State<DesktopShell> {
                               child: const Icon(Icons.person_rounded, size: 14, color: DesktopThemeTokens.accentCyan),
                             ),
                             const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 160),
-                                      child: Text(
-                                        user?.email ?? 'nick0425@gmail.com',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF59E0B).withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                      child: Text(
-                                        isVip ? i18n.t('vip_badge') : i18n.t('free_badge'),
-                                        style: const TextStyle(
-                                          color: Color(0xFFF59E0B),
-                                          fontSize: 8.5,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                            Flexible(
+                              child: Text(
+                                (user?.email != null && user!.email.isNotEmpty)
+                                    ? user.email
+                                    : i18n.t('guest_mode'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                              ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                isVip ? i18n.t('vip_badge') : i18n.t('free_badge'),
+                                style: const TextStyle(
+                                  color: Color(0xFFF59E0B),
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -726,7 +701,7 @@ class _DesktopShellState extends State<DesktopShell> {
           coreDaemon: widget.coreDaemon,
           subscriptionEngine: widget.subscriptionEngine,
           authManager: widget.authManager,
-          onToggleConnection: widget.onToggleConnection,
+          onToggleConnection: _handleToggleConnectionWithOfflineGuard,
           onSelectNode: () => _switchTab(2),
           enableAnimations: widget.enableAnimations,
         );
@@ -740,7 +715,7 @@ class _DesktopShellState extends State<DesktopShell> {
           onNavigateToHome: () => _switchTab(0),
           onTriggerConnect: () {
             if (!widget.coreDaemon.state.isConnected && !widget.coreDaemon.state.isConnecting) {
-              widget.onToggleConnection();
+              _handleToggleConnectionWithOfflineGuard();
             }
           },
         );
@@ -764,6 +739,7 @@ class _DesktopShellState extends State<DesktopShell> {
           shopManager: widget.shopManager,
           configService: widget.configService,
           onSwitchTab: _switchTab,
+          onLogout: widget.onLogout,
         );
       case 7:
         return DesktopSettingsView(
@@ -777,7 +753,7 @@ class _DesktopShellState extends State<DesktopShell> {
           coreDaemon: widget.coreDaemon,
           subscriptionEngine: widget.subscriptionEngine,
           authManager: widget.authManager,
-          onToggleConnection: widget.onToggleConnection,
+          onToggleConnection: _handleToggleConnectionWithOfflineGuard,
           enableAnimations: widget.enableAnimations,
         );
     }

@@ -10,6 +10,7 @@ import '../../business/shop/shop_manager.dart';
 import '../../business/subscription/subscription_engine.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 
 /// 訂單支付頁面 (OrderPaymentScreen)
 /// 統一深色科技風 (Dark Tech Material 3)，藍色高亮訂單卡、多渠道支付方式選擇與結帳
@@ -138,7 +139,7 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> with WidgetsBin
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = ErrorSanitizer.sanitize(e);
           _isLoading = false;
         });
       }
@@ -304,20 +305,20 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> with WidgetsBin
           }
         } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(I18nService.instance.t('order_open_url_failed', {'url': cashierUrl}))),
+            SnackBar(content: Text(I18nService.instance.t('order_open_url_failed'))),
           );
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(I18nService.instance.t('order_checkout_failed', {'error': cashierUrl}))),
+            SnackBar(content: Text(I18nService.instance.t('order_checkout_failed', {'error': ErrorSanitizer.sanitize(cashierUrl)}))),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(I18nService.instance.t('order_checkout_failed', {'error': e.toString()}))),
+          SnackBar(content: Text(I18nService.instance.t('order_checkout_failed', {'error': ErrorSanitizer.sanitize(e)}))),
         );
       }
     } finally {
@@ -372,9 +373,12 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> with WidgetsBin
                     ],
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  children: [
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      children: [
                     // 1. 藍色高亮訂單資訊卡 (帶動態狀態)
                     Container(
                       padding: const EdgeInsets.all(18),
@@ -637,7 +641,9 @@ class _OrderPaymentScreenState extends State<OrderPaymentScreen> with WidgetsBin
                         ],
                       ),
                     ),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
     );
   }

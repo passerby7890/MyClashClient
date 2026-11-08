@@ -158,12 +158,16 @@ class _DesktopAffiliateViewState extends State<DesktopAffiliateView> {
   }
 
   String _getInviteLink(String code) {
-    final rawInvite = widget.configService.activeConfig.inviteLink;
+    final rawInvite = widget.configService.activeConfig.inviteLink?.trim();
     if (rawInvite != null && rawInvite.isNotEmpty) {
       if (rawInvite.contains('{code}')) return rawInvite.replaceAll('{code}', code);
-      return '$rawInvite/#/register?code=$code';
+      if (rawInvite.contains('code=')) {
+        return rawInvite.replaceAll(RegExp(r'code=.*'), 'code=$code');
+      }
+      final base = rawInvite.endsWith('/') ? rawInvite.substring(0, rawInvite.length - 1) : rawInvite;
+      return '$base/#/register?code=$code';
     }
-    return 'https://tianhe.net/#/register?code=$code';
+    return 'https://0n21.com/#/register?code=$code';
   }
 
   @override

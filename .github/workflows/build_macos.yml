@@ -14,7 +14,7 @@ jobs:
   build-macos:
     name: Build macOS DMG (Apple Silicon & Intel)
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: "1. 檢出專案程式碼"
@@ -40,8 +40,13 @@ jobs:
         run: |
           python3 ./scripts/macos_cloud_acceptance.py
 
+      - name: "5.3 🛡️ Step A.3: 執行 v3.1.0 (Build 111) 零洩漏隱密性與節點熱切換全自動化驗收測試"
+        run: |
+          flutter test test/v310_stealth_and_hotswitch_test.dart
+
       - name: "5.5 🔥 Step A.5: 執行 macOS 雲端實機連續 1 小時（60 分鐘）極限烤機驗收"
         run: |
+          rm -f mac_60min_burnin_report.json
           python3 ./scripts/macos_60min_burnin_test.py
 
       - name: "6. 🎨 Step B: 執行 8 大 Bento 分頁 × 4 國語言無視覺溢出測試"

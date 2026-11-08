@@ -34,6 +34,7 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   int _selectedContinentIndex = 0; // 0: 全部, 1: 亞洲, 2: 歐美, 3: 其他
+  bool _favoritesOnly = false;
   bool _isTesting = false;
   bool _isRefreshing = false;
   late final AnimationController _rotationController;
@@ -164,30 +165,26 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
   }
 
   List<NodeModel> _getFilteredNodes() {
-    var list = widget.subscriptionEngine.nodes;
-
-    // 搜尋過濾
-    if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
-      list = list.where((n) =>
-          n.name.toLowerCase().contains(q) ||
-          n.protocol.toLowerCase().contains(q) ||
-          n.countryCode.toLowerCase().contains(q)).toList();
-    }
+    var list = widget.subscriptionEngine.getFilteredNodes(
+      favoritesOnly: _favoritesOnly,
+      searchQuery: _searchQuery,
+    );
 
     // 分組大洲過濾
-    if (_selectedContinentIndex == 1) {
-      // 亞洲
-      const asiaCodes = ['HK', 'JP', 'SG', 'TW', 'KR', 'MY', 'TH', 'VN', 'PH', 'IN'];
-      list = list.where((n) => asiaCodes.contains(n.countryCode.toUpperCase())).toList();
-    } else if (_selectedContinentIndex == 2) {
-      // 歐美
-      const westernCodes = ['US', 'CA', 'GB', 'DE', 'FR', 'NL', 'IE', 'RU', 'AU'];
-      list = list.where((n) => westernCodes.contains(n.countryCode.toUpperCase())).toList();
-    } else if (_selectedContinentIndex == 3) {
-      // 其他
-      const mainCodes = ['HK', 'JP', 'SG', 'TW', 'KR', 'MY', 'TH', 'VN', 'PH', 'IN', 'US', 'CA', 'GB', 'DE', 'FR', 'NL', 'IE', 'RU', 'AU'];
-      list = list.where((n) => !mainCodes.contains(n.countryCode.toUpperCase())).toList();
+    if (!_favoritesOnly) {
+      if (_selectedContinentIndex == 1) {
+        // 亞洲
+        const asiaCodes = ['HK', 'JP', 'SG', 'TW', 'KR', 'MY', 'TH', 'VN', 'PH', 'IN'];
+        list = list.where((n) => asiaCodes.contains(n.countryCode.toUpperCase())).toList();
+      } else if (_selectedContinentIndex == 2) {
+        // 歐美
+        const westernCodes = ['US', 'CA', 'GB', 'DE', 'FR', 'NL', 'IE', 'RU', 'AU'];
+        list = list.where((n) => westernCodes.contains(n.countryCode.toUpperCase())).toList();
+      } else if (_selectedContinentIndex == 3) {
+        // 其他
+        const mainCodes = ['HK', 'JP', 'SG', 'TW', 'KR', 'MY', 'TH', 'VN', 'PH', 'IN', 'US', 'CA', 'GB', 'DE', 'FR', 'NL', 'IE', 'RU', 'AU'];
+        list = list.where((n) => !mainCodes.contains(n.countryCode.toUpperCase())).toList();
+      }
     }
 
     return list;
@@ -205,14 +202,13 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 頂部整合控制列 (搜尋框 + 分類按鈕 + 測速與優選，拔除雙重重複標題)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                // 搜尋框
-                Container(
-                  width: 220,
-                  height: 36,
+          Row(
+            children: [
+              // 搜尋框
+              SizedBox(
+                width: 222,
+                height: 36,
+                child: Container(
                   decoration: BoxDecoration(
                     color: DesktopThemeTokens.cardInnerBg,
                     borderRadius: BorderRadius.circular(18),
@@ -248,94 +244,135 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+              ),
+              const SizedBox(width: 10),
 
-                // 分類標籤
-                _buildContinentTab(0, i18n.t('node_tab_all')),
-                const SizedBox(width: 6),
-                _buildContinentTab(1, i18n.t('node_tab_asia')),
-                const SizedBox(width: 6),
-                _buildContinentTab(2, i18n.t('node_tab_western')),
-                const SizedBox(width: 6),
-                _buildContinentTab(3, i18n.t('node_tab_others')),
-
-                const SizedBox(width: 16),
-
-                // 手動刷新節點按鈕 (支援旋轉動效與防連點鎖定)
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: DesktopThemeTokens.textPrimary,
-                    side: const BorderSide(color: DesktopThemeTokens.borderColor),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              // 分類標籤 + 收藏篩選
+              _buildContinentTab(0, i18n.t('node_tab_all')),
+              const SizedBox(width: 6),
+              _buildContinentTab(1, i18n.t('node_tab_asia')),
+              const SizedBox(width: 6),
+              _buildContinentTab(2, i18n.t('node_tab_western')),
+              const SizedBox(width: 6),
+              _buildContinentTab(3, i18n.t('node_tab_others')),
+              const SizedBox(width: 6),
+              InkWell(
+                onTap: () => setState(() => _favoritesOnly = !_favoritesOnly),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _favoritesOnly ? Colors.amberAccent.withOpacity(0.16) : DesktopThemeTokens.cardInnerBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.borderColor,
+                    ),
                   ),
-                  onPressed: (_isRefreshing || _isTesting) ? null : _handleRefreshNodes,
-                  icon: RotationTransition(
-                    turns: _rotationController,
-                    child: const Icon(Icons.refresh_rounded, size: 16),
-                  ),
-                  label: Text(
-                    i18n.t('refresh_nodes'),
-                    style: const TextStyle(fontSize: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _favoritesOnly ? Icons.star_rounded : Icons.star_outline_rounded,
+                        size: 14,
+                        color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        i18n.t('node_tab_favorites'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _favoritesOnly ? FontWeight.bold : FontWeight.normal,
+                          color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
+              ),
 
-                // 自動優選按鈕
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: DesktopThemeTokens.neonCyan,
-                    side: const BorderSide(color: DesktopThemeTokens.borderColor),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: _handleSelectFastest,
-                  icon: const Icon(Icons.bolt_rounded, size: 16),
-                  label: Text(i18n.t('best_latency'), style: const TextStyle(fontSize: 12)),
-                ),
-                const SizedBox(width: 8),
+              const Spacer(),
 
-                // 批量測速按鈕
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: DesktopThemeTokens.neonCyan,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: _isTesting ? null : _handleBatchPing,
-                  icon: _isTesting
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                      : const Icon(Icons.speed_rounded, size: 16),
-                  label: Text(i18n.t('speed_test'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              // 手動刷新節點按鈕 (支援旋轉動效與防連點鎖定)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: DesktopThemeTokens.textPrimary,
+                  side: const BorderSide(color: DesktopThemeTokens.borderColor),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-              ],
-            ),
+                onPressed: (_isRefreshing || _isTesting) ? null : _handleRefreshNodes,
+                icon: RotationTransition(
+                  turns: _rotationController,
+                  child: const Icon(Icons.refresh_rounded, size: 16),
+                ),
+                label: Text(
+                  i18n.t('refresh_nodes'),
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // 自動優選按鈕
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: DesktopThemeTokens.neonCyan,
+                  side: const BorderSide(color: DesktopThemeTokens.borderColor),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _handleSelectFastest,
+                icon: const Icon(Icons.bolt_rounded, size: 16),
+                label: Text(i18n.t('best_latency'), style: const TextStyle(fontSize: 12)),
+              ),
+              const SizedBox(width: 8),
+
+              // 批量測速按鈕
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: DesktopThemeTokens.neonCyan,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: _isTesting ? null : _handleBatchPing,
+                icon: _isTesting
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                    : const Icon(Icons.speed_rounded, size: 16),
+                label: Text(i18n.t('speed_test'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
 
-          // 3 欄並排網格卡片清單 (固定高度 76px，零下拉)
+          // 響應式自適應網格卡片清單 (根據寬度自適應 2~4 欄，固定高度 76px，零截斷)
           Expanded(
             child: nodes.isEmpty
                 ? Center(
                     child: Text(
-                      _searchQuery.isNotEmpty ? i18n.t('node_empty_search') : i18n.t('node_empty_all'),
+                      _favoritesOnly
+                          ? i18n.t('node_empty_fav')
+                          : (_searchQuery.isNotEmpty ? i18n.t('node_empty_search') : i18n.t('node_empty_all')),
                       style: const TextStyle(color: DesktopThemeTokens.textMuted, fontSize: 14),
                     ),
                   )
-                : GridView.builder(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      mainAxisExtent: 76,
-                    ),
-                    itemCount: nodes.length,
-                    itemBuilder: (context, index) {
-                      final node = nodes[index];
-                      final isSelected = selectedNode?.id == node.id;
-                      return _buildNodeCard(node, isSelected, i18n);
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final crossAxisCount = (constraints.maxWidth / 300).floor().clamp(1, 4);
+                      return GridView.builder(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          mainAxisExtent: 76,
+                        ),
+                        itemCount: nodes.length,
+                        itemBuilder: (context, index) {
+                          final node = nodes[index];
+                          final isSelected = selectedNode?.id == node.id;
+                          return _buildNodeCard(node, isSelected, i18n);
+                        },
+                      );
                     },
                   ),
           ),
@@ -345,9 +382,12 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
   }
 
   Widget _buildContinentTab(int index, String label) {
-    final isSelected = _selectedContinentIndex == index;
+    final isSelected = !_favoritesOnly && _selectedContinentIndex == index;
     return InkWell(
-      onTap: () => setState(() => _selectedContinentIndex = index),
+      onTap: () => setState(() {
+        _favoritesOnly = false;
+        _selectedContinentIndex = index;
+      }),
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -403,12 +443,25 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
         ),
         child: Row(
           children: [
+            // 收藏星號按鈕
+            InkWell(
+              onTap: () => widget.subscriptionEngine.toggleFavorite(node.id),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
+                child: Icon(
+                  node.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                  size: 18,
+                  color: node.isFavorite ? Colors.amberAccent : Colors.white30,
+                ),
+              ),
+            ),
             // 彩色向量國旗
             CountryFlagBadge(
               node: node,
-              size: const Size(26, 18),
+              size: const Size(24, 17),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 9),
 
             // 節點名稱與協定
             Expanded(
@@ -416,14 +469,18 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    node.cleanDisplayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                      color: isSelected ? Colors.white : DesktopThemeTokens.textSecondary,
+                  Tooltip(
+                    message: node.name,
+                    waitDuration: const Duration(milliseconds: 500),
+                    child: Text(
+                      node.cleanDisplayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                        color: isSelected ? Colors.white : DesktopThemeTokens.textSecondary,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 3),

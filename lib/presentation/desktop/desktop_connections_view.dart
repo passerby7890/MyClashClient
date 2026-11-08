@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
 import 'desktop_theme_tokens.dart';
 
@@ -101,7 +102,7 @@ class _DesktopConnectionsViewState extends State<DesktopConnectionsView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(i18n.t('conn_close_error', {'error': e.toString()}))),
+          SnackBar(content: Text(i18n.t('conn_close_error', {'error': ErrorSanitizer.sanitize(e)}))),
         );
       }
     } finally {

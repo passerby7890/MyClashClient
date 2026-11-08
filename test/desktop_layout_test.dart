@@ -66,7 +66,7 @@ void main() {
     testWidgets('1. DesktopDashboardLayout 四大區塊完整渲染驗證', (tester) async {
       // 設置模擬使用者資料
       final testUser = UserModel(
-        email: 'nick0425@gmail.com',
+        email: 'audit_user@tianhe.net',
         transferEnable: 1024 * 1024 * 1024 * 100, // 100 GB
         u: 1024 * 1024 * 1024 * 10,
         d: 1024 * 1024 * 1024 * 15,
@@ -95,7 +95,7 @@ void main() {
       expect(find.text(i18n.t('sign_out')), findsOneWidget);
 
       // 驗證 B. 右上頂部資訊列
-      expect(find.text('nick0425@gmail.com'), findsOneWidget);
+      expect(find.text('audit_user@tianhe.net'), findsOneWidget);
       expect(find.text('VIP'), findsOneWidget);
 
       // 驗證 C. 主視覺核心加速區

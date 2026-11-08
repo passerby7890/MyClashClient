@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import '../constants/app_constants.dart';
+import '../utils/error_sanitizer.dart';
 import '../../infrastructure/config/app_config_service.dart';
 
 /// 安全 HTTP 客戶端 (基於 Dio 封裝)
@@ -19,6 +20,7 @@ class DioClient {
     if (customDio != null) {
       _dio = customDio;
     } else {
+      final osLabel = !kIsWeb && Platform.isMacOS ? 'macOS' : 'Windows';
       _dio = Dio(
         BaseOptions(
           baseUrl: _configService.currentApiDomain,
@@ -28,7 +30,7 @@ class DioClient {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json; charset=UTF-8',
-            'User-Agent': 'TianheNetwork/${AppConstants.appVersion} (macOS)',
+            'User-Agent': 'TianheNetwork/${AppConstants.appVersion} ($osLabel)',
           },
           responseType: ResponseType.json,
         ),
@@ -38,7 +40,7 @@ class DioClient {
         _dio.httpClientAdapter = IOHttpClientAdapter(
           createHttpClient: () {
             final client = HttpClient();
-            // 🛡️ 絕招一：禁止系統 HTTP 代理 (強制 DIRECT 直連，無視 Wi-Fi 代理 / Fiddler / Charles / 小黃鳥抓包)
+            // 🛡️ 絕招一：禁止系統 HTTP 代理 (強制 DIRECT 直連，無視系統代理 / Fiddler / Charles 抓包)
             client.findProxy = (uri) => 'DIRECT';
             client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
             return client;
@@ -78,8 +80,7 @@ class DioClient {
 
           if (isFailoverError && retryCount < allDomains.length && allDomains.length > 1) {
             final nextDomain = _configService.switchNextApiDomain();
-            // ignore: avoid_print
-            print('[DioClient] 遭遇錯誤 (code: $statusCode, type: ${err.type})，自動切換至備援網域並重試: $nextDomain (重試 $retryCount/${allDomains.length})');
+            SafeLog.d('[DioClient] 遭遇連線異常 (code: $statusCode, type: ${err.type})，自動切換備援線路重試 (${retryCount + 1}/${allDomains.length})');
 
             final options = err.requestOptions;
             options.extra['api_failover_retry'] = retryCount + 1;
@@ -138,9 +139,31 @@ class DioClient {
   /// 取得底層 Dio 實例
   Dio get dio => _dio;
 
-  /// 新增攔截器 (如 AuthInterceptor, LogInterceptor)
+  /// 新增攔截器 (如 AuthInterceptor)
   void addInterceptor(Interceptor interceptor) {
     _dio.interceptors.add(interceptor);
+  }
+
+  bool _useRescueProxy = false;
+  bool get useRescueProxy => _useRescueProxy;
+
+  /// 設定是否啟用緊急前置代理 (PROXY 127.0.0.1:7890)
+  void setRescueProxyMode(bool enable) {
+    if (kIsWeb || _useRescueProxy == enable) return;
+    _useRescueProxy = enable;
+    _dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final client = HttpClient();
+        client.badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+        if (enable) {
+          client.findProxy = (uri) => 'PROXY 127.0.0.1:7890';
+        } else {
+          client.findProxy = (uri) => 'DIRECT';
+        }
+        return client;
+      },
+    );
+    SafeLog.d('[DioClient] 網路通道模式已切換: ${enable ? "RESCUE_PROXY" : "DIRECT"}');
   }
 
   /// 手動輪替至下一個備援 API 網域

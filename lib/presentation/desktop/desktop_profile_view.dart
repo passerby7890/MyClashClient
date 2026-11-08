@@ -23,6 +23,7 @@ class DesktopProfileView extends StatelessWidget {
   final ShopManager shopManager;
   final AppConfigService configService;
   final Function(int)? onSwitchTab;
+  final VoidCallback? onLogout;
 
   const DesktopProfileView({
     super.key,
@@ -30,6 +31,7 @@ class DesktopProfileView extends StatelessWidget {
     required this.shopManager,
     required this.configService,
     this.onSwitchTab,
+    this.onLogout,
   });
 
   Future<void> _handleLogout(BuildContext context) async {
@@ -68,6 +70,10 @@ class DesktopProfileView extends StatelessWidget {
     );
 
     if (confirm == true) {
+      if (onLogout != null) {
+        onLogout!();
+        return;
+      }
       await authManager.logout();
       if (context.mounted) {
         Navigator.of(context).pushAndRemoveUntil(

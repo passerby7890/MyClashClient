@@ -9,6 +9,7 @@ import '../../business/auth/auth_manager.dart';
 import '../../business/subscription/subscription_engine.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../core/theme/app_theme.dart';
 import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
@@ -102,7 +103,7 @@ class _MoreScreenState extends State<MoreScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${I18nService.instance.t('check_update_failed')}: $e')),
+          SnackBar(content: Text('${I18nService.instance.t('check_update_failed')}: ${ErrorSanitizer.sanitize(e)}')),
         );
       }
     } finally {
@@ -240,7 +241,7 @@ class _MoreScreenState extends State<MoreScreen> {
                       _buildActionRow(
                         icon: Icons.network_check_rounded,
                         title: i18n.t('more_diagnostics'),
-                        subtitle: 'DNS, TLS & Latency',
+                        subtitle: i18n.t('diag_subtitle_summary'),
                         onTap: () {
                           DiagnosticsModal.show(
                             context,
@@ -288,7 +289,7 @@ class _MoreScreenState extends State<MoreScreen> {
                       _buildActionRow(
                         icon: Icons.security_rounded,
                         title: i18n.t('more_doh_protection'),
-                        subtitle: 'Cloudflare / Google DoH',
+                        subtitle: i18n.t('doh_multi_tier_active'),
                         trailing: const Icon(Icons.check_circle_rounded, color: AppTheme.successEmerald, size: 16),
                         onTap: () {},
                       ),
@@ -303,6 +304,7 @@ class _MoreScreenState extends State<MoreScreen> {
                             activeColor: AppTheme.primaryCyan,
                             onChanged: (val) async {
                               final ok = await WindowsProxyService.instance.setAutoStart(val);
+                              if (!mounted) return;
                               if (ok) {
                                 setState(() => _isAutoStart = val);
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -328,7 +330,7 @@ class _MoreScreenState extends State<MoreScreen> {
                       _buildActionRow(
                         icon: Icons.headset_mic_rounded,
                         title: i18n.t('online_service'),
-                        subtitle: '7x24 Live Support',
+                        subtitle: i18n.t('live_support_desc'),
                         onTap: () {
                           final cfg = widget.configService.activeConfig;
                           final u = widget.authManager?.state.user;
@@ -358,7 +360,7 @@ class _MoreScreenState extends State<MoreScreen> {
                       _buildActionRow(
                         icon: Icons.language_rounded,
                         title: i18n.t('profile_website'),
-                        subtitle: 'Official Portal',
+                        subtitle: i18n.t('official_portal'),
                         onTap: () {
                           final portal = widget.configService.activeConfig.websiteUrl ?? AppConstants.officialWebsiteUrl;
                           _openUrl(portal);
@@ -437,7 +439,7 @@ class _MoreScreenState extends State<MoreScreen> {
             _buildActionRow(
               icon: Icons.network_check_rounded,
               title: i18n.t('more_diagnostics'),
-              subtitle: 'DNS, TLS & Latency',
+              subtitle: i18n.t('diag_subtitle_summary'),
               onTap: () => DiagnosticsModal.show(context, coreDaemon: widget.coreDaemon, configService: widget.configService),
             ),
           ],
@@ -469,7 +471,7 @@ class _MoreScreenState extends State<MoreScreen> {
             _buildActionRow(
               icon: Icons.headset_mic_rounded,
               title: i18n.t('online_service'),
-              subtitle: '7x24 Live Support',
+              subtitle: i18n.t('live_support_desc'),
               onTap: () {
                 final cfg = widget.configService.activeConfig;
                 CustomerServiceModal.show(context, crispId: cfg.crispId, user: widget.authManager?.state.user, authManager: widget.authManager);
@@ -479,7 +481,7 @@ class _MoreScreenState extends State<MoreScreen> {
             _buildActionRow(
               icon: Icons.language_rounded,
               title: i18n.t('profile_website'),
-              subtitle: 'Official Portal',
+              subtitle: i18n.t('official_portal'),
               onTap: () => _openUrl(widget.configService.activeConfig.websiteUrl ?? AppConstants.officialWebsiteUrl),
             ),
           ],
@@ -529,7 +531,8 @@ class _MoreScreenState extends State<MoreScreen> {
   }
 
   Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
+    final uri = Uri.tryParse(url);
+    if (uri == null || (!uri.isScheme('http') && !uri.isScheme('https'))) return;
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {}

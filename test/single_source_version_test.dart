@@ -9,8 +9,8 @@ void main() {
   group('🏛️ 全系統版本號單一事實來源 (Single Source of Truth) 驗證測試', () {
     test('1. AppConstants 全域版本變數定義正確且對齊 pubspec.yaml', () {
       expect(AppConstants.appVersion, equals('3.1.0'));
-      expect(AppConstants.appBuildNumber, equals(110));
-      expect(AppConstants.fullVersionDisplay, equals('v3.1.0 (Build 110)'));
+      expect(AppConstants.appBuildNumber, equals(111));
+      expect(AppConstants.fullVersionDisplay, equals('v3.1.0 (Build 111)'));
       expect(AppConstants.versionTag, equals('v3.1.0'));
     });
 

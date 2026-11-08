@@ -19,7 +19,7 @@ void main() {
 
     test('2. 第一重保障 (URL 官方參數)：精準帶入 user_email、user_nickname 與 64位元 token_id', () {
       const user = UserModel(
-        email: 'nick0425@gmail.com',
+        email: 'audit_test@tianhe.net',
         transferEnable: 107374182400, // 100 GB
         u: 10737418240, // 10 GB
         d: 10737418240, // 10 GB
@@ -31,15 +31,15 @@ void main() {
       // 驗證 Query 參數
       final uri = Uri.parse(url);
       expect(uri.queryParameters['website_id'], equals(AppConstants.crispWebsiteId));
-      expect(uri.queryParameters['user_email'], equals('nick0425@gmail.com'));
-      expect(uri.queryParameters['user_nickname'], equals('nick0425@gmail.com'));
+      expect(uri.queryParameters['user_email'], equals('audit_test@tianhe.net'));
+      expect(uri.queryParameters['user_nickname'], equals('audit_test@tianhe.net'));
 
       final tokenId = uri.queryParameters['token_id'];
       expect(tokenId, isNotNull);
       expect(tokenId!.length, equals(64)); // SHA-256 輸出 64 位十六進制字串
 
       // 驗證確定性：同一使用者信箱生成的 token_id 必須完全一致
-      final expectedHash = sha256.convert(utf8.encode('tianhe_nick0425@gmail.com')).toString();
+      final expectedHash = sha256.convert(utf8.encode('tianhe_audit_test@tianhe.net')).toString();
       expect(tokenId, equals(expectedHash));
     });
 
@@ -86,7 +86,7 @@ void main() {
       expect(planName, equals('白金旗艦線路套餐'));
       expect(trafficRemaining, contains('TB'));
       expect(expireAt, isNotEmpty);
-      expect(appVersion, equals('v3.0.9 (Build 109)'));
+      expect(appVersion, equals('v3.1.0 (Build 111)'));
     });
   });
 }

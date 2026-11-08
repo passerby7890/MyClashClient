@@ -156,6 +156,55 @@ class NodeModel {
     return '其他';
   }
 
+  /// 依語系返回本地化地區名稱 (zh_CN 轉簡體、en 轉英文，預設保持繁體相容單元測試)
+  String localizedRegionName(String langCode) {
+    final code = countryCode.toUpperCase();
+    if (langCode == 'en') {
+      const enMap = {
+        'HK': 'Hong Kong', 'TW': 'Taiwan', 'JP': 'Japan', 'SG': 'Singapore',
+        'KR': 'South Korea', 'US': 'United States', 'VN': 'Vietnam', 'TH': 'Thailand',
+        'PH': 'Philippines', 'MY': 'Malaysia', 'IN': 'India', 'ID': 'Indonesia',
+        'MO': 'Macau', 'AE': 'UAE', 'GB': 'United Kingdom', 'UK': 'United Kingdom',
+        'DE': 'Germany', 'FR': 'France', 'NL': 'Netherlands', 'RU': 'Russia',
+        'IE': 'Ireland', 'CH': 'Switzerland', 'TR': 'Turkey', 'IT': 'Italy',
+        'ES': 'Spain', 'CA': 'Canada', 'BR': 'Brazil', 'AR': 'Argentina',
+        'MX': 'Mexico', 'AU': 'Australia', 'NZ': 'New Zealand', 'ZA': 'South Africa',
+        'UA': 'Ukraine', 'SE': 'Sweden', 'NO': 'Norway', 'FI': 'Finland',
+        'DK': 'Denmark', 'PL': 'Poland', 'AT': 'Austria', 'BE': 'Belgium',
+      };
+      if (enMap.containsKey(code)) return enMap[code]!;
+    } else if (langCode == 'zh_CN') {
+      const cnMap = {
+        'HK': '香港', 'TW': '台湾', 'JP': '日本', 'SG': '新加坡',
+        'KR': '韩国', 'US': '美国', 'VN': '越南', 'TH': '泰国',
+        'PH': '菲律宾', 'MY': '马来西亚', 'IN': '印度', 'ID': '印尼',
+        'MO': '澳门', 'AE': '阿联酋', 'GB': '英国', 'UK': '英国',
+        'DE': '德国', 'FR': '法国', 'NL': '荷兰', 'RU': '俄罗斯',
+        'IE': '爱尔兰', 'CH': '瑞士', 'TR': '土耳其', 'IT': '意大利',
+        'ES': '西班牙', 'CA': '加拿大', 'BR': '巴西', 'AR': '阿根廷',
+        'MX': '墨西哥', 'AU': '澳大利亚', 'NZ': '新西兰', 'ZA': '南非',
+        'UA': '乌克兰', 'SE': '瑞典', 'NO': '挪威', 'FI': '芬兰',
+        'DK': '丹麦', 'PL': '波兰', 'AT': '奥地利', 'BE': '比利时',
+      };
+      if (cnMap.containsKey(code)) return cnMap[code]!;
+    } else if (langCode == 'ja') {
+      const jaMap = {
+        'HK': '香港', 'TW': '台湾', 'JP': '日本', 'SG': 'シンガポール',
+        'KR': '韓国', 'US': '米国', 'VN': 'ベトナム', 'TH': 'タイ',
+        'PH': 'フィリピン', 'MY': 'マレーシア', 'IN': 'インド', 'ID': 'インドネシア',
+        'MO': 'マカオ', 'AE': 'UAE', 'GB': '英国', 'UK': '英国',
+        'DE': 'ドイツ', 'FR': 'フランス', 'NL': 'オランダ', 'RU': 'ロシア',
+        'IE': 'アイルランド', 'CH': 'スイス', 'TR': 'トルコ', 'IT': 'イタリア',
+        'ES': 'スペイン', 'CA': 'カナダ', 'BR': 'ブラジル', 'AR': 'アルゼンチン',
+        'MX': 'メキシコ', 'AU': 'オーストラリア', 'NZ': 'ニュージーランド', 'ZA': '南アフリカ',
+        'UA': 'ウクライナ', 'SE': 'スウェーデン', 'NO': 'ノルウェー', 'FI': 'フィンランド',
+        'DK': 'デンマーク', 'PL': 'ポーランド', 'AT': 'オーストリア', 'BE': 'ベルギー',
+      };
+      if (jaMap.containsKey(code)) return jaMap[code]!;
+    }
+    return regionName;
+  }
+
   /// 節點所屬地區名稱 (用於卡片副標題標註，嚴格維持具體國家名稱，絕不顯示「歐美」)
   String get regionName {
     final code = countryCode.toUpperCase();

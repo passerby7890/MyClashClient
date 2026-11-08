@@ -4,18 +4,89 @@
 class AppConstants {
   AppConstants._();
 
-  // --- DoH 端點 (多級容災備援：國內阿裡雲/騰訊 + 國際 Cloudflare/Google) ---
-  static const String cloudflareDohEndpoint = 'https://cloudflare-dns.com/dns-query';
-  static const String googleDohEndpoint = 'https://dns.google/resolve';
-  static const String tencentDohEndpoint = 'https://doh.pub/dns-query';
-  static const String aliyunDohEndpoint = 'https://dns.alidns.com/resolve';
-
-  // --- 絕招二：XOR 字串隱形術 (防止逆向工程 strings libapp.so 檢索明文網域與密鑰) ---
+  // --- 絕招二：XOR 字串隱形術 (防止逆向工程 strings app.so / App 檢索明文網域、DoH、OSS 與密鑰) ---
   static const int _xorMask = 0x5A;
   static String _deobfuscate(List<int> bytes) =>
       String.fromCharCodes(bytes.map((b) => b ^ _xorMask));
 
-  // --- 阿里雲 OSS 動態加密配置來源 (天河網絡專屬端點) ---
+  // --- DoH 端點 (多級容災備援：全 XOR 混淆存儲，零明文暴露) ---
+  static const List<int> _encCloudflareDoh = [
+    50, 46, 46, 42, 41, 96, 117, 117, 57, 54, 53, 47, 62, 60, 54, 59, 40, 63,
+    119, 62, 52, 41, 116, 57, 53, 55, 117, 62, 52, 41, 119, 43, 47, 63, 40, 35
+  ];
+  static String get cloudflareDohEndpoint => _deobfuscate(_encCloudflareDoh);
+
+  static const List<int> _encGoogleDoh = [
+    50, 46, 46, 42, 41, 96, 117, 117, 62, 52, 41, 116, 61, 53, 53, 61, 54, 63,
+    117, 40, 63, 41, 53, 54, 44, 63
+  ];
+  static String get googleDohEndpoint => _deobfuscate(_encGoogleDoh);
+
+  static const List<int> _encTencentDoh = [
+    50, 46, 46, 42, 41, 96, 117, 117, 62, 53, 50, 116, 42, 47, 56, 117, 62, 52,
+    41, 119, 43, 47, 63, 40, 35
+  ];
+  static String get tencentDohEndpoint => _deobfuscate(_encTencentDoh);
+
+  static const List<int> _encAliyunDoh = [
+    50, 46, 46, 42, 41, 96, 117, 117, 62, 52, 41, 116, 59, 54, 51, 62, 52, 41,
+    116, 57, 53, 55, 117, 40, 63, 41, 53, 54, 44, 63
+  ];
+  static String get aliyunDohEndpoint => _deobfuscate(_encAliyunDoh);
+
+  static const List<int> _encAliyunIpDoh = [
+    50, 46, 46, 42, 41, 96, 117, 117, 104, 104, 105, 116, 111, 116, 111, 116,
+    111, 117, 62, 52, 41, 119, 43, 47, 63, 40, 35
+  ];
+  static String get aliyunIpDohEndpoint => _deobfuscate(_encAliyunIpDoh);
+
+  static const List<int> _encTencentIpDoh = [
+    50, 46, 46, 42, 41, 96, 117, 117, 107, 116, 107, 104, 116, 107, 104, 116,
+    107, 104, 117, 62, 52, 41, 119, 43, 47, 63, 40, 35
+  ];
+  static String get tencentIpDohEndpoint => _deobfuscate(_encTencentIpDoh);
+
+  // --- 常見 DoH 回退節點與 Crisp Base (XOR 混淆存儲) ---
+  static const List<int> _encCrispEmbedBaseUrl = [
+    50, 46, 46, 42, 41, 96, 117, 117, 61, 53, 116, 57, 40, 51, 41, 42, 116, 57,
+    50, 59, 46, 117, 57, 50, 59, 46, 117, 63, 55, 56, 63, 62, 117
+  ];
+  static String get crispEmbedBaseUrl => _deobfuscate(_encCrispEmbedBaseUrl);
+
+  static const List<int> _encCloudflareDnsOverHttpsFallback = [
+    50, 46, 46, 42, 41, 96, 117, 117, 107, 116, 107, 116, 107, 116, 107, 117,
+    62, 52, 41, 119, 43, 47, 63, 40, 35, 121, 10, 8, 21, 2, 3
+  ];
+  static String get cloudflareDnsOverHttpsFallback =>
+      _deobfuscate(_encCloudflareDnsOverHttpsFallback);
+
+  static const List<int> _encGoogleDnsOverHttpsFallback = [
+    50, 46, 46, 42, 41, 96, 117, 117, 62, 52, 41, 116, 61, 53, 53, 61, 54, 63,
+    117, 62, 52, 41, 119, 43, 47, 63, 40, 35, 121, 10, 8, 21, 2, 3
+  ];
+  static String get googleDnsOverHttpsFallback =>
+      _deobfuscate(_encGoogleDnsOverHttpsFallback);
+
+  static const List<int> _encTencentDnsOverHttpsFallback = [
+    50, 46, 46, 42, 41, 96, 117, 117, 62, 53, 50, 116, 42, 47, 56, 117, 62, 52,
+    41, 119, 43, 47, 63, 40, 35
+  ];
+  static String get tencentDnsOverHttpsFallback =>
+      _deobfuscate(_encTencentDnsOverHttpsFallback);
+
+  static const List<int> _encAliDnsOverHttpsFallback = [
+    50, 46, 46, 42, 41, 96, 117, 117, 62, 52, 41, 116, 59, 54, 51, 62, 52, 41,
+    116, 57, 53, 55, 117, 62, 52, 41, 119, 43, 47, 63, 40, 35
+  ];
+  static String get aliDnsOverHttpsFallback =>
+      _deobfuscate(_encAliDnsOverHttpsFallback);
+
+  static const List<int> _encCloudflareDnsHost = [
+    57, 54, 53, 47, 62, 60, 54, 59, 40, 63, 119, 62, 52, 41, 116, 57, 53, 55
+  ];
+  static String get cloudflareDnsHost => _deobfuscate(_encCloudflareDnsHost);
+
+  // --- 阿里雲 OSS 動態加密配置來源 (天河網絡專屬端點，XOR 混淆存儲) ---
   static const List<int> _encOssUrl = [
     50, 46, 46, 42, 41, 96, 117, 117, 46, 50, 48, 41, 43, 99, 99, 99, 116, 53,
     41, 41, 119, 59, 42, 119, 41, 53, 47, 46, 50, 63, 59, 41, 46, 119, 107, 116,
@@ -24,13 +95,23 @@ class AppConstants {
   ];
   static String get aliyunOssConfigUrl => _deobfuscate(_encOssUrl);
 
-  /// 官方專案即時更新清單 URL (update.json)
-  static const String ossUpdateJsonUrl =
-      'https://novaclash.oss-ap-northeast-1.aliyuncs.com/update.json';
+  /// 官方專案即時更新清單 URL (XOR 混淆存儲)
+  static const List<int> _encOssUpdateUrl = [
+    50, 46, 46, 42, 41, 96, 117, 117, 52, 53, 44, 59, 57, 54, 59, 41, 50, 116,
+    53, 41, 41, 119, 59, 42, 119, 52, 53, 40, 46, 50, 63, 59, 41, 46, 119, 107,
+    116, 59, 54, 51, 35, 47, 52, 57, 41, 116, 57, 53, 55, 117, 47, 42, 62, 59,
+    46, 63, 116, 48, 41, 53, 52
+  ];
+  static String get ossUpdateJsonUrl => _deobfuscate(_encOssUpdateUrl);
 
-  // --- 官方品牌素材 ---
-  static const String logoUrl =
-      'https://novaclash.oss-ap-northeast-1.aliyuncs.com/img/logo.png';
+  // --- 官方品牌素材 (XOR 混淆存儲) ---
+  static const List<int> _encLogoUrl = [
+    50, 46, 46, 42, 41, 96, 117, 117, 52, 53, 44, 59, 57, 54, 59, 41, 50, 116,
+    53, 41, 41, 119, 59, 42, 119, 52, 53, 40, 46, 50, 63, 59, 41, 46, 119, 107,
+    116, 59, 54, 51, 35, 47, 52, 57, 41, 116, 57, 53, 55, 117, 51, 55, 61, 117,
+    54, 53, 61, 53, 116, 42, 52, 61
+  ];
+  static String get logoUrl => _deobfuscate(_encLogoUrl);
   static const String logoAssetPath = 'assets/images/logo.png';
 
   // --- 查詢網域配置 (XOR 混淆存儲) ---
@@ -61,12 +142,34 @@ class AppConstants {
   ];
   static String get officialWebsiteUrl => _deobfuscate(_encWebsiteUrl);
 
-  // --- 在線客服與社群連結 (對齊 Tianhe Crisp 與 Telegram 官方機器人) ---
-  static const String crispWebsiteId = 'b8b32705-d834-41b5-b6f5-6849fa0679d6';
-  static const String crispChatUrl =
-      'https://go.crisp.chat/chat/embed/?website_id=b8b32705-d834-41b5-b6f5-6849fa0679d6';
-  static const String telegramGroupUrl = 'https://t.me/q8891qcom';
-  static const String telegramBotUrl = 'https://t.me/THJSQBOT';
+  // --- 在線客服與社群連結 (XOR 混淆存儲) ---
+  static const List<int> _encCrispId = [
+    56, 98, 56, 105, 104, 109, 106, 111, 119, 62, 98, 105, 110, 119, 110, 107,
+    56, 111, 119, 56, 108, 60, 111, 119, 108, 98, 110, 99, 60, 59, 106, 108,
+    109, 99, 62, 108
+  ];
+  static String get crispWebsiteId => _deobfuscate(_encCrispId);
+
+  static const List<int> _encCrispChatUrl = [
+    50, 46, 46, 42, 41, 96, 117, 117, 61, 53, 116, 57, 40, 51, 41, 42, 116, 57,
+    50, 59, 46, 117, 57, 50, 59, 46, 117, 63, 55, 56, 63, 62, 117, 101, 45, 63,
+    56, 41, 51, 46, 63, 5, 51, 62, 103, 56, 98, 56, 105, 104, 109, 106, 111,
+    119, 62, 98, 105, 110, 119, 110, 107, 56, 111, 119, 56, 108, 60, 111, 119,
+    108, 98, 110, 99, 60, 59, 106, 108, 109, 99, 62, 108
+  ];
+  static String get crispChatUrl => _deobfuscate(_encCrispChatUrl);
+
+  static const List<int> _encTgGroupUrl = [
+    50, 46, 46, 42, 41, 96, 117, 117, 46, 116, 55, 63, 117, 43, 98, 98, 99, 107,
+    43, 57, 53, 55
+  ];
+  static String get telegramGroupUrl => _deobfuscate(_encTgGroupUrl);
+
+  static const List<int> _encTgBotUrl = [
+    50, 46, 46, 42, 41, 96, 117, 117, 46, 116, 55, 63, 117, 14, 18, 16, 9, 11,
+    24, 21, 14
+  ];
+  static String get telegramBotUrl => _deobfuscate(_encTgBotUrl);
 
   // --- 加密金鑰常數 (AES-256-CBC, XOR 混淆存儲) ---
   static const List<int> _encKey = [
@@ -80,17 +183,69 @@ class AppConstants {
   ];
   static String get defaultAesIv => _deobfuscate(_encIv);
 
-  // --- 本地安全儲存 Keys ---
-  static const String storageJwtToken = 'v2board_jwt_token';
-  static const String storageUserInfo = 'v2board_user_info';
-  static const String storageCachedConfig = 'v2board_cached_remote_config';
-  static const String storageSelectedNodeId = 'v2board_selected_node_id';
-  static const String storageFavoriteNodeIds = 'v2board_favorite_node_ids';
-  static const String storageAppLanguage = 'v2board_app_language';
-  static const String storageLastTrafficAlertTime = 'v2board_last_traffic_alert_time';
-  static const String storageEncryptedNodes = 'v2board_encrypted_nodes_vault';
-  static const String storageAutoConnectOnNodeSelect = 'v2board_auto_connect_on_node_select';
-  static const String storageCachedSubscribePath = 'v2board_cached_subscribe_path';
+  // --- 本地安全儲存 Keys (XOR 混淆存儲，確保與舊版 100% 無縫相容且二進位零 v2board 字串殘留) ---
+  static const List<int> _encStorageJwtToken = [
+    44, 104, 56, 53, 59, 40, 62, 5, 48, 45, 46, 5, 46, 53, 49, 63, 52
+  ];
+  static String get storageJwtToken => _deobfuscate(_encStorageJwtToken);
+
+  static const List<int> _encStorageUserInfo = [
+    44, 104, 56, 53, 59, 40, 62, 5, 47, 41, 63, 40, 5, 51, 52, 60, 53
+  ];
+  static String get storageUserInfo => _deobfuscate(_encStorageUserInfo);
+
+  static const List<int> _encStorageCachedConfig = [
+    44, 104, 56, 53, 59, 40, 62, 5, 57, 59, 57, 50, 63, 62, 5, 40, 63, 55, 53,
+    46, 63, 5, 57, 53, 52, 60, 51, 61
+  ];
+  static String get storageCachedConfig => _deobfuscate(_encStorageCachedConfig);
+
+  static const List<int> _encStorageSelectedNodeId = [
+    44, 104, 56, 53, 59, 40, 62, 5, 41, 63, 54, 63, 57, 46, 63, 62, 5, 52, 53,
+    62, 63, 5, 51, 62
+  ];
+  static String get storageSelectedNodeId =>
+      _deobfuscate(_encStorageSelectedNodeId);
+
+  static const List<int> _encStorageFavoriteNodeIds = [
+    44, 104, 56, 53, 59, 40, 62, 5, 60, 59, 44, 53, 40, 51, 46, 63, 5, 52, 53,
+    62, 63, 5, 51, 62, 41
+  ];
+  static String get storageFavoriteNodeIds =>
+      _deobfuscate(_encStorageFavoriteNodeIds);
+
+  static const List<int> _encStorageAppLanguage = [
+    44, 104, 56, 53, 59, 40, 62, 5, 59, 42, 42, 5, 54, 59, 52, 61, 47, 59, 61, 63
+  ];
+  static String get storageAppLanguage => _deobfuscate(_encStorageAppLanguage);
+
+  static const List<int> _encStorageLastTrafficAlertTime = [
+    44, 104, 56, 53, 59, 40, 62, 5, 54, 59, 41, 46, 5, 46, 40, 59, 60, 60, 51,
+    57, 5, 59, 54, 63, 40, 46, 5, 46, 51, 55, 63
+  ];
+  static String get storageLastTrafficAlertTime =>
+      _deobfuscate(_encStorageLastTrafficAlertTime);
+
+  static const List<int> _encStorageEncryptedNodes = [
+    44, 104, 56, 53, 59, 40, 62, 5, 63, 52, 57, 40, 35, 42, 46, 63, 62, 5, 52,
+    53, 62, 63, 41, 5, 44, 59, 47, 54, 46
+  ];
+  static String get storageEncryptedNodes =>
+      _deobfuscate(_encStorageEncryptedNodes);
+
+  static const List<int> _encStorageAutoConnectOnNodeSelect = [
+    44, 104, 56, 53, 59, 40, 62, 5, 59, 47, 46, 53, 5, 57, 53, 52, 52, 63, 57,
+    46, 5, 53, 52, 5, 52, 53, 62, 63, 5, 41, 63, 54, 63, 57, 46
+  ];
+  static String get storageAutoConnectOnNodeSelect =>
+      _deobfuscate(_encStorageAutoConnectOnNodeSelect);
+
+  static const List<int> _encStorageCachedSubscribePath = [
+    44, 104, 56, 53, 59, 40, 62, 5, 57, 59, 57, 50, 63, 62, 5, 41, 47, 56, 41,
+    57, 40, 51, 56, 63, 5, 42, 59, 46, 50
+  ];
+  static String get storageCachedSubscribePath =>
+      _deobfuscate(_encStorageCachedSubscribePath);
 
   // --- 網路連線超時設定 (毫秒) ---
   static const int connectTimeoutMs = 8000;
@@ -102,10 +257,14 @@ class AppConstants {
   static const String appVersion =
       String.fromEnvironment('APP_VERSION', defaultValue: '3.1.0');
   static const int appBuildNumber =
-      int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 110);
+      int.fromEnvironment('APP_BUILD_NUMBER', defaultValue: 111);
   static const String fullVersionDisplay = 'v$appVersion (Build $appBuildNumber)';
   static const String versionTag = 'v$appVersion';
 
-  // --- Mihomo 本地 Controller 防窺探金鑰 (防止未授權讀取節點與配置) ---
-  static const String coreSecret = 'tianhe_sec_99a8b7c6d5e4';
+  // --- 本地核心控制防窺探金鑰 (XOR 混淆存儲) ---
+  static const List<int> _encCoreSecret = [
+    46, 51, 59, 52, 50, 63, 5, 41, 63, 57, 5, 99, 99, 59, 98, 56, 109, 57, 108,
+    62, 111, 63, 110
+  ];
+  static String get coreSecret => _deobfuscate(_encCoreSecret);
 }

@@ -1,36 +1,90 @@
 // lib/presentation/dashboard/widgets/node_selector_modal.dart
 
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/i18n/i18n_service.dart';
+import '../../../core/utils/error_sanitizer.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../business/subscription/node_model.dart';
 import '../../../business/subscription/subscription_engine.dart';
 import '../../widgets/country_flag_badge.dart';
 
 /// 節點選擇彈窗 / 抽屜組件 (NodeSelectorModal)
-/// 提供大洲分組 (全部 / 亞洲 / 美洲 / 歐洲 / 其他)、收藏星號即時切換、一鍵測速與最佳節點選擇
+/// 提供大洲分組 (全部 / 亞洲 / 歐美 / 其他)、收藏星號即時切換、一鍵測速與最佳節點選擇
+/// 支援桌面端高質感居中 Dialog 與自適應 2~4 欄響應式佈局，徹底消除文字截斷
 class NodeSelectorModal extends StatefulWidget {
   final SubscriptionEngine subscriptionEngine;
   final bool isEmbedded;
+  final bool isDialog;
   final ValueChanged<NodeModel>? onNodeSelected;
 
   const NodeSelectorModal({
     super.key,
     required this.subscriptionEngine,
     this.isEmbedded = false,
+    this.isDialog = false,
     this.onNodeSelected,
   });
 
-  /// 喚起底部抽屜
+  /// 喚起節點選擇彈窗 (桌面端自動呈現高質感居中 Dialog，行動端呈現底部抽屜)
   static Future<void> show(
     BuildContext context, {
     required SubscriptionEngine subscriptionEngine,
+    ValueChanged<NodeModel>? onNodeSelected,
   }) {
+    final isDesktopPlatform = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    final isWideScreen = MediaQuery.of(context).size.width > 720;
+
+    if (isDesktopPlatform || isWideScreen) {
+      return showDialog(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.65),
+        barrierDismissible: true,
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 1040,
+              maxHeight: 700,
+            ),
+            decoration: BoxDecoration(
+              color: AppTheme.darkSurface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppTheme.darkBorder, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.55),
+                  blurRadius: 28,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: AppTheme.primaryCyan.withOpacity(0.08),
+                  blurRadius: 16,
+                  spreadRadius: -2,
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: NodeSelectorModal(
+              subscriptionEngine: subscriptionEngine,
+              isDialog: true,
+              onNodeSelected: onNodeSelected,
+            ),
+          ),
+        ),
+      );
+    }
+
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => NodeSelectorModal(subscriptionEngine: subscriptionEngine),
+      builder: (ctx) => NodeSelectorModal(
+        subscriptionEngine: subscriptionEngine,
+        onNodeSelected: onNodeSelected,
+      ),
     );
   }
 
@@ -82,7 +136,10 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刷新失敗: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+            content: Text('${I18nService.instance.t('refresh_failed_prefix')}${ErrorSanitizer.sanitize(e)}'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } finally {
@@ -135,7 +192,7 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
     final i18n = I18nService.instance;
     final allNodes = widget.subscriptionEngine.nodes;
     final selectedNode = widget.subscriptionEngine.selectedNode;
-    final isDesktop = widget.isEmbedded || MediaQuery.of(context).size.width > 800;
+    final isDesktop = widget.isEmbedded || widget.isDialog || MediaQuery.of(context).size.width > 720;
 
     // 依收藏、延遲排序與搜尋字串過濾
     var filteredNodes = widget.subscriptionEngine.getFilteredNodes(
@@ -165,34 +222,51 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
           const SizedBox(height: 14),
         ],
 
-        // 2. 頂部控制列 (桌面端：單一整合列；手機端：標題 + 搜尋 + 滾動條)
-        if (isDesktop)
+        // 2. 頂部控制列 (桌面端：高質感雙層架構；手機端：標題 + 搜尋 + 滾動條)
+        if (isDesktop) ...[
+          // ── 第一層：標題、搜尋框、操作按鈕群與關閉 ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
             child: Row(
               children: [
-                const Icon(Icons.hub_rounded, size: 22, color: AppTheme.primaryCyan),
-                const SizedBox(width: 8),
+                // 標題圖標與文字
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryCyan.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.hub_rounded, size: 20, color: AppTheme.primaryCyan),
+                ),
+                const SizedBox(width: 10),
                 Text(
                   i18n.t('node_selector_title'),
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
+                    letterSpacing: 0.3,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '(${filteredNodes.length}/${allNodes.length})',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.5),
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${filteredNodes.length}/${allNodes.length}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.6),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const Spacer(),
 
-                // 緊湊搜尋框
+                // 緊湊精緻搜尋框
                 SizedBox(
                   width: 210,
                   height: 36,
@@ -225,27 +299,18 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 10),
 
-                // 分頁標籤 Chips (一排完整呈現，免橫向捲動)
-                Expanded(
-                  child: Row(
-                    children: _buildFilterChips(i18n),
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                // 右側按鈕：[↻ 刷新節點]、[⚡ 節點測速]、[🚀 智慧優選]
+                // 操作按鈕群：[↻ 刷新]、[⚡ 測速]、[🚀 智慧優選]
                 FilledButton.icon(
                   onPressed: _isRefreshing ? null : _handleRefreshNodes,
                   icon: _isRefreshing
                       ? const SizedBox(
-                          width: 13,
-                          height: 13,
+                          width: 12,
+                          height: 12,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Icon(Icons.sync_rounded, size: 16),
+                      : const Icon(Icons.sync_rounded, size: 15),
                   label: Text(
                     i18n.t('node_refresh_nodes'),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -253,7 +318,7 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF334155),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
@@ -262,11 +327,11 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                   onPressed: _isTestingLatency ? null : _handleSpeedTest,
                   icon: _isTestingLatency
                       ? const SizedBox(
-                          width: 13,
-                          height: 13,
+                          width: 12,
+                          height: 12,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Icon(Icons.bolt_rounded, size: 16),
+                      : const Icon(Icons.bolt_rounded, size: 15),
                   label: Text(
                     _isTestingLatency ? i18n.t('node_testing') : i18n.t('node_speed_test'),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -274,14 +339,14 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF0EA5E9),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
                 const SizedBox(width: 6),
                 FilledButton.icon(
                   onPressed: allNodes.isEmpty ? null : _handleSelectFastest,
-                  icon: const Icon(Icons.rocket_launch_rounded, size: 16),
+                  icon: const Icon(Icons.rocket_launch_rounded, size: 15),
                   label: Text(
                     i18n.t('node_smart_optimal'),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -289,14 +354,160 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.successEmerald,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+
+                // 桌面端彈窗關閉按鈕
+                if (!widget.isEmbedded) ...[
+                  const SizedBox(width: 8),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 18, color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── 第二層：大洲分組標籤與特性過濾條 (橫向充裕空間，零遮擋零截斷) ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: Row(
+              children: [
+                // 大洲分類標籤
+                ..._continents.map((continent) {
+                  final isSelected = !_favoritesOnly && _selectedContinent == continent;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedContinent = continent;
+                          _favoritesOnly = false;
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppTheme.primaryCyan.withOpacity(0.18) : AppTheme.darkCard,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected ? AppTheme.primaryCyan : AppTheme.darkBorder,
+                            width: isSelected ? 1.2 : 1.0,
+                          ),
+                        ),
+                        child: Text(
+                          _continentLabel(continent),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                            color: isSelected ? AppTheme.primaryCyan : Colors.white70,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+
+                const SizedBox(width: 8),
+                Container(width: 1, height: 16, color: Colors.white12),
+                const SizedBox(width: 12),
+
+                // 特性標籤 1：★ 我的收藏
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _favoritesOnly = !_favoritesOnly;
+                      if (_favoritesOnly) _selectedContinent = '全部';
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _favoritesOnly ? Colors.amberAccent.withOpacity(0.18) : AppTheme.darkCard,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _favoritesOnly ? Colors.amberAccent : AppTheme.darkBorder,
+                        width: _favoritesOnly ? 1.2 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _favoritesOnly ? Icons.star_rounded : Icons.star_outline_rounded,
+                          size: 15,
+                          color: _favoritesOnly ? Colors.amberAccent : Colors.white60,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          i18n.t('node_tab_favorites'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: _favoritesOnly ? FontWeight.bold : FontWeight.w500,
+                            color: _favoritesOnly ? Colors.amberAccent : Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // 特性標籤 2：⚡ 最低延遲優先
+                InkWell(
+                  onTap: () => setState(() => _sortByLowestLatency = !_sortByLowestLatency),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _sortByLowestLatency ? AppTheme.primaryCyan.withOpacity(0.18) : AppTheme.darkCard,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _sortByLowestLatency ? AppTheme.primaryCyan : AppTheme.darkBorder,
+                        width: _sortByLowestLatency ? 1.2 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.speed_rounded,
+                          size: 15,
+                          color: _sortByLowestLatency ? AppTheme.primaryCyan : Colors.white60,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          i18n.t('node_tab_fastest'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: _sortByLowestLatency ? FontWeight.bold : FontWeight.w500,
+                            color: _sortByLowestLatency ? AppTheme.primaryCyan : Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          )
-        else ...[
+          ),
+        ] else ...[
           // 手機版標題列
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -411,9 +622,9 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
           ),
         ],
 
-        const SizedBox(height: 10),
+        const SizedBox(height: 4),
 
-        // 3. 節點列表內容 (桌面端：橫向 3 欄 GridView；手機端：單欄 ListView)
+        // 3. 節點列表內容 (桌面端：自適應 2~4 欄響應式 GridView；手機端：單欄 ListView)
         Expanded(
           child: filteredNodes.isEmpty
               ? Center(
@@ -436,20 +647,27 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
                   ),
                 )
               : isDesktop
-                  ? GridView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        childAspectRatio: 2.85,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemCount: filteredNodes.length,
-                      itemBuilder: (context, index) {
-                        return _buildNodeItemCard(
-                          node: filteredNodes[index],
-                          isSelected: selectedNode?.id == filteredNodes[index].id,
-                          isDesktop: true,
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        // 依容器寬度動態自適應欄數：確保單卡寬度充足 (>= 335px)，徹底消除節點與協定文字截斷
+                        final int crossAxisCount = (constraints.maxWidth / 335).floor().clamp(1, 3);
+
+                        return GridView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            mainAxisExtent: 72,
+                          ),
+                          itemCount: filteredNodes.length,
+                          itemBuilder: (context, index) {
+                            return _buildNodeItemCard(
+                              node: filteredNodes[index],
+                              isSelected: selectedNode?.id == filteredNodes[index].id,
+                              isDesktop: true,
+                            );
+                          },
                         );
                       },
                     )
@@ -469,7 +687,7 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
       ],
     );
 
-    if (widget.isEmbedded) {
+    if (widget.isEmbedded || widget.isDialog) {
       return content;
     }
 
@@ -603,8 +821,8 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: EdgeInsets.symmetric(
-          horizontal: isDesktop ? 8 : 12,
-          vertical: isDesktop ? 7 : 10,
+          horizontal: isDesktop ? 10 : 12,
+          vertical: isDesktop ? 8 : 10,
         ),
         decoration: BoxDecoration(
           color: isSelected
@@ -613,15 +831,15 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected
-                ? AppTheme.primaryCyan.withOpacity(0.7)
+                ? AppTheme.primaryCyan.withOpacity(0.85)
                 : AppTheme.darkBorder,
-            width: isSelected ? 1.4 : 1.0,
+            width: isSelected ? 1.5 : 1.0,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppTheme.primaryCyan.withOpacity(0.18),
-                    blurRadius: 8,
+                    color: AppTheme.primaryCyan.withOpacity(0.2),
+                    blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),
                 ]
@@ -634,11 +852,11 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
               icon: Icon(
                 isFav ? Icons.star_rounded : Icons.star_outline_rounded,
                 color: isFav ? Colors.amberAccent : Colors.white30,
-                size: 20,
+                size: 19,
               ),
-              splashRadius: 16,
+              splashRadius: 14,
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+              constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
               onPressed: () async {
                 await widget.subscriptionEngine.toggleFavorite(node.id);
               },
@@ -647,51 +865,70 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
 
             // 國旗彩色向量徽章
             CountryFlagBadge(node: node, size: const Size(22, 15)),
+            const SizedBox(width: 10),
+
+            // 節點名稱與協定標籤 (給予充足空間，加 Tooltip 保障全稱無礙)
+            Expanded(
+              child: Tooltip(
+                message: node.name,
+                waitDuration: const Duration(milliseconds: 500),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      node.cleanDisplayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                        fontSize: 13,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                      const SizedBox(height: 3),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            // 協定微型膠囊
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                node.protocol.toUpperCase(),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            // 地區文字
+                            Text(
+                              node.localizedRegionName(I18nService.instance.currentCode),
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.45),
+                                fontSize: 10.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             const SizedBox(width: 8),
 
-            // 節點名稱與協定
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    node.cleanDisplayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${node.protocol.toUpperCase()} · ${node.regionName}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.45),
-                      fontSize: 10.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-
-            // 延遲徽章
+            // 延遲徽章 (選中狀態已由外框霓虹高亮清晰呈現，不再額外擠壓節點標題寬度)
             _buildLatencyBadge(node),
-
-            // 選中打勾
-            if (isSelected) ...[
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.check_circle_rounded,
-                color: AppTheme.primaryCyan,
-                size: 18,
-              ),
-            ],
           ],
         ),
       ),
@@ -719,7 +956,7 @@ class _NodeSelectorModalState extends State<NodeSelectorModal> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(6),

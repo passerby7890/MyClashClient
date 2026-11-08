@@ -1,8 +1,8 @@
 name: flclash_v2board_client
-description: FlClash Customized Client (V2Board Dedicated Edition) with DoH Multi-tier Fallback, AES-256 Decryption, Silent Mihomo Injection and In-App Auto Updater.
+description: Tianhe Network Desktop Client with Multi-tier Encrypted Routing and Auto Updater.
 publish_to: 'none'
 
-version: 3.1.0+110
+version: 3.1.0+111
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

@@ -1,6 +1,7 @@
 // lib/business/shop/plan_model.dart
 
 import 'dart:convert';
+import '../../core/i18n/i18n_service.dart';
 
 /// V2Board 套餐模型 (PlanModel)
 class PlanModel {
@@ -206,5 +207,30 @@ class PlanPeriodOption {
     required this.priceYuan,
     required this.formattedPrice,
   });
+
+  /// 依當前語系返回多國語言週期名稱
+  String localizedLabel([I18nService? i18n]) {
+    final svc = i18n ?? I18nService.instance;
+    switch (key) {
+      case 'month_price':
+        return svc.t('period_month');
+      case 'quarter_price':
+        return svc.t('period_quarter');
+      case 'half_year_price':
+        return svc.t('period_half_year');
+      case 'year_price':
+        return svc.t('period_year');
+      case 'two_year_price':
+        return svc.t('period_two_year');
+      case 'three_year_price':
+        return svc.t('period_three_year');
+      case 'onetime_price':
+        return svc.t('period_onetime');
+      case 'reset_price':
+        return svc.t('period_reset_traffic');
+      default:
+        return label;
+    }
+  }
 }
 

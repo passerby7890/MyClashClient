@@ -54,7 +54,7 @@ void main() {
       final service = MacosNativeProxy.instance;
       final path = service.getMihomoExecutablePath();
       expect(path, isNotEmpty);
-      expect(path.contains('mihomo'), isTrue);
+      expect(path.contains('tianhe_engine') || path.contains('mihomo'), isTrue);
 
       // 執行 stopCore
       await service.stopCore();

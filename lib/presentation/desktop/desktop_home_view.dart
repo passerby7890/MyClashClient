@@ -1,6 +1,8 @@
 // lib/presentation/desktop/desktop_home_view.dart
 
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../business/auth/auth_manager.dart';
 import '../../business/subscription/subscription_engine.dart';
@@ -8,6 +10,7 @@ import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
 import '../../infrastructure/core_daemon/core_state.dart';
 import '../../infrastructure/core_daemon/traffic_stats.dart';
+import '../../infrastructure/core_daemon/windows_proxy_service.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../dashboard/widgets/cyber_world_map.dart';
 import '../widgets/country_flag_badge.dart';
@@ -140,13 +143,14 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const double bottomCardHeight = 255.0;
-        const double bottomPadding = 24.0;
-        const double topPadding = 12.0;
-        const double spacing = 16.0;
+        final bool isCompact = constraints.maxHeight < 650;
+        final double bottomCardHeight = isCompact ? 216.0 : 255.0;
+        final double bottomPadding = isCompact ? 14.0 : 24.0;
+        final double topPadding = isCompact ? 8.0 : 12.0;
+        final double spacing = isCompact ? 10.0 : 16.0;
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             DesktopThemeTokens.spacing,
             topPadding,
             DesktopThemeTokens.spacing,
@@ -160,9 +164,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
               // 使用 Expanded 釋放上方空間，自動佔滿所有高度，讓地球底圖大氣展開
               // ══════════════════════════════════════════════
               Expanded(
-                child: _buildHeroZone(coreState, traffic, selectedNode, i18n),
+                child: _buildHeroZone(coreState, traffic, selectedNode, i18n, isCompact: isCompact),
               ),
-              const SizedBox(height: spacing),
+              SizedBox(height: spacing),
 
               // ══════════════════════════════════════════════
               // 下半部：緊湊精緻雙欄狀態卡 (緊縮至 255px，底部對齊保留 24px)
@@ -201,8 +205,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
     CoreState coreState,
     TrafficStats traffic,
     dynamic selectedNode,
-    I18nService i18n,
-  ) {
+    I18nService i18n, {
+    bool isCompact = false,
+  }) {
     final isConnected = coreState.isConnected;
     final isConnecting = coreState.isConnecting;
 
@@ -228,7 +233,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
 
           // 2. 內容排版：頂部右上角放大節點膠囊 + 垂直居中加速球與模式切換膠囊
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: isCompact ? 8 : 12),
             child: Column(
               children: [
                 // 頂部狀態欄：右側放大版選中節點膠囊
@@ -246,16 +251,19 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
                 // 釋放空間垂直居中展示大圓球與模式膠囊
                 Expanded(
                   child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // 中央刻度儀表與 168px 加速大圓球 (外圈刻度環 210px)
-                        _buildTachometerDial(isConnected, isConnecting, i18n),
-                        const SizedBox(height: 12),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // 中央刻度儀表與加速大圓球
+                          _buildTachometerDial(isConnected, isConnecting, i18n, isCompact: isCompact),
+                          SizedBox(height: isCompact ? 8 : 12),
 
-                        // 圓球正下方居中放置 [ 🌐 全局模式 | ⚡ 規則模式 | 🛡️ TUN模式 ] 三合一整體切換膠囊
-                        _buildModeSwitchCapsule(i18n),
-                      ],
+                          // 圓球正下方居中放置 [ 🌐 全局模式 | ⚡ 規則模式 | 🛡️ TUN模式 ] 三合一整體切換膠囊
+                          _buildModeSwitchCapsule(i18n),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -267,8 +275,90 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
     );
   }
 
+  Future<void> _handleSelectRoutingMode(String targetMode) async {
+    final i18n = I18nService.instance;
+    if (targetMode == 'tun' && !kIsWeb && Platform.isWindows) {
+      final hasWintun = await WindowsProxyService.instance.isWintunAvailable();
+      if (!hasWintun) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: DesktopThemeTokens.cardSurface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: DesktopThemeTokens.borderMuted),
+            ),
+            title: Text(i18n.t('tun_driver_missing_title'), style: const TextStyle(color: Colors.white, fontSize: 16)),
+            content: Text(i18n.t('tun_driver_missing_desc'), style: const TextStyle(color: Colors.white70, fontSize: 13.5)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(i18n.t('confirm'), style: const TextStyle(color: DesktopThemeTokens.neonCyan)),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      final isAdmin = await WindowsProxyService.instance.isRunningAsAdmin();
+      if (!isAdmin) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: DesktopThemeTokens.cardSurface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: DesktopThemeTokens.borderMuted),
+            ),
+            title: Row(
+              children: [
+                const Icon(Icons.admin_panel_settings_rounded, color: DesktopThemeTokens.amberWarn, size: 22),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    i18n.t('tun_admin_required_title'),
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              i18n.t('tun_admin_required_desc'),
+              style: const TextStyle(color: Colors.white70, fontSize: 13.5, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(i18n.t('cancel'), style: const TextStyle(color: Colors.white54)),
+              ),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  WindowsProxyService.instance.restartAsAdmin();
+                },
+                icon: const Icon(Icons.security_rounded, size: 16),
+                label: Text(i18n.t('tun_admin_restart_btn')),
+                style: FilledButton.styleFrom(
+                  backgroundColor: DesktopThemeTokens.neonCyan,
+                  foregroundColor: Colors.black,
+                ),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    await widget.subscriptionEngine.setRoutingMode(targetMode);
+    if (mounted) setState(() {});
+  }
+
   Widget _buildModeSwitchCapsule(I18nService i18n) {
-    final current = widget.coreDaemon.proxyMode;
+    final currentMode = widget.subscriptionEngine.routingMode;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
@@ -283,34 +373,22 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
           _buildModeOption(
             icon: Icons.public_rounded,
             label: i18n.t('mode_global'),
-            isSelected: current == ProxyMode.global,
-            onTap: () async {
-              await widget.subscriptionEngine.setRoutingMode('global');
-              await widget.coreDaemon.setProxyMode(ProxyMode.global);
-              if (mounted) setState(() {});
-            },
+            isSelected: currentMode == 'global',
+            onTap: () => _handleSelectRoutingMode('global'),
           ),
           const SizedBox(width: 4),
           _buildModeOption(
             icon: Icons.bolt_rounded,
             label: i18n.t('mode_rule'),
-            isSelected: current == ProxyMode.rule,
-            onTap: () async {
-              await widget.subscriptionEngine.setRoutingMode('rule');
-              await widget.coreDaemon.setProxyMode(ProxyMode.rule);
-              if (mounted) setState(() {});
-            },
+            isSelected: currentMode == 'rule',
+            onTap: () => _handleSelectRoutingMode('rule'),
           ),
           const SizedBox(width: 4),
           _buildModeOption(
             icon: Icons.security_rounded,
             label: i18n.t('mode_tun'),
-            isSelected: current == ProxyMode.tun,
-            onTap: () async {
-              await widget.subscriptionEngine.setRoutingMode('tun');
-              await widget.coreDaemon.setProxyMode(ProxyMode.tun);
-              if (mounted) setState(() {});
-            },
+            isSelected: currentMode == 'tun',
+            onTap: () => _handleSelectRoutingMode('tun'),
           ),
         ],
       ),
@@ -359,9 +437,14 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
     );
   }
 
-  Widget _buildTachometerDial(bool isConnected, bool isConnecting, I18nService i18n) {
-    const dialSize = 210.0;
-    const innerBallSize = 168.0;
+  Widget _buildTachometerDial(
+    bool isConnected,
+    bool isConnecting,
+    I18nService i18n, {
+    bool isCompact = false,
+  }) {
+    final dialSize = isCompact ? 176.0 : 210.0;
+    final innerBallSize = isCompact ? 142.0 : 168.0;
 
     return AnimatedBuilder(
       animation: _pulseController,
@@ -376,7 +459,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
             children: [
               // 外圍 270 度精密刻度繪製器 (210px)
               CustomPaint(
-                size: const Size(dialSize, dialSize),
+                size: Size(dialSize, dialSize),
                 painter: _TachometerPainter(
                   isConnected: isConnected,
                   isConnecting: isConnecting,
@@ -508,11 +591,14 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
               const Icon(Icons.sensors_rounded, size: 16, color: DesktopThemeTokens.neonCyan),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  i18n.t('service_and_traffic'),
-                  style: DesktopThemeTokens.titleStyle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    i18n.t('service_and_traffic'),
+                    style: DesktopThemeTokens.titleStyle,
+                    maxLines: 1,
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -557,7 +643,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
               const SizedBox(width: 6),
 
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                 decoration: BoxDecoration(
                   color: isConnected
                       ? DesktopThemeTokens.emeraldGreen.withOpacity(0.12)
@@ -565,7 +651,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView>
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isConnected ? i18n.t('status_connected') : i18n.t('status_disconnected'),
+                  isConnected ? i18n.t('status_connected_badge') : i18n.t('status_disconnected_badge'),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

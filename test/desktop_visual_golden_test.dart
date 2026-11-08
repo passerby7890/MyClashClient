@@ -46,7 +46,7 @@ void main() {
     authManager = AuthManager(dioClient: dioClient, storageService: storage);
 
     final user = UserModel(
-      email: 'nick0425@gmail.com',
+      email: 'audit_user@tianhe.net',
       transferEnable: 1024 * 1024 * 1024 * 500, // 500 GB
       u: 1024 * 1024 * 1024 * 25, // 25 GB
       d: 1024 * 1024 * 1024 * 95, // 95 GB

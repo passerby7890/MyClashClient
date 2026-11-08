@@ -24,8 +24,8 @@ DIST_MAC.mkdir(parents=True, exist_ok=True)
 AUDIT_MAC.mkdir(parents=True, exist_ok=True)
 
 artifacts = [
-    ("mac-acceptance-evidence", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13027260771/zip", AUDIT_MAC),
-    ("TianheNetwork_v3.0.9_macOS", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13027280699/zip", DIST_MAC)
+    ("mac-acceptance-evidence", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13491948242/zip", AUDIT_MAC),
+    ("TianheNetwork_v3.1.0_macOS", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13491973100/zip", DIST_MAC)
 ]
 
 def download_resumable(name, api_url, target_dir):
@@ -110,3 +110,10 @@ for name, url, target_dir in artifacts:
     download_resumable(name, url, target_dir)
 
 print("\n🎉 全部 macOS 實機產物已成功下載並歸檔！")
+
+# 自動同步至 [打包上傳]
+sync_script = PROJECT_ROOT.parent / "scripts" / "sync_release_to_upload.py"
+if sync_script.exists():
+    print("\n[SYNC] 正在自動同步至 [打包上傳] 資料夾...")
+    import subprocess
+    subprocess.run([sys.executable, str(sync_script)])

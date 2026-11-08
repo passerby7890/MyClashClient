@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/i18n/i18n_service.dart';
+import '../../../core/utils/error_sanitizer.dart';
 import '../../../infrastructure/core_daemon/core_daemon.dart';
 
 /// 天河網絡 即時活動連線監控視圖 (ConnectionsView)
@@ -122,7 +123,7 @@ class _ConnectionsViewState extends State<ConnectionsView> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(i18n.t('conn_close_error', {'error': e.toString()}))),
+          SnackBar(content: Text(i18n.t('conn_close_error', {'error': ErrorSanitizer.sanitize(e)}))),
         );
       }
     } finally {

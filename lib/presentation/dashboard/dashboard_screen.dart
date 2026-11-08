@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import '../../core/storage/secure_storage_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../infrastructure/config/app_config_service.dart';
@@ -123,7 +124,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           customSubscribeUrl: user?.subscribeUrl,
         );
       } catch (e) {
-        debugPrint('[DashboardScreen] 背景同步訂閱失敗: $e');
+        SafeLog.d('[DashboardScreen] 背景同步訂閱失敗: ${ErrorSanitizer.sanitize(e)}');
       }
 
       // 檢查並彈出公告 (依據遠端配置之 enableNotice 開關)
@@ -201,7 +202,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('連線失敗: $e'),
+              content: Text(I18nService.instance.t('conn_failed_prefix', {'error': ErrorSanitizer.sanitize(e)})),
               backgroundColor: Colors.redAccent,
               duration: const Duration(seconds: 4),
             ),
@@ -630,14 +631,26 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 final u = widget.authManager.state.user;
                                 if (token != null) {
                                   setState(() => _isSyncing = true);
+                                  bool syncOk = true;
                                   try {
                                     await _subscriptionEngine.syncSubscription(
                                       token: token,
                                       customSubscribeUrl: u?.subscribeUrl,
                                     );
-                                  } catch (_) {}
+                                  } catch (e) {
+                                    syncOk = false;
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('${I18nService.instance.t('refresh_failed_prefix')}${ErrorSanitizer.sanitize(e)}'),
+                                          backgroundColor: Colors.redAccent,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                  if (!mounted) return;
                                   setState(() => _isSyncing = false);
-                                  if (mounted) {
+                                  if (syncOk) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text(I18nService.instance.t('sync_subscription'))),
                                     );
@@ -707,10 +720,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: GestureDetector(
         onTap: () async {
           if (targetUrl != null && targetUrl.isNotEmpty) {
-            final uri = Uri.parse(targetUrl);
-            try {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            } catch (_) {}
+            final uri = Uri.tryParse(targetUrl);
+            if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
+              try {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            }
           }
         },
         child: ClipRRect(

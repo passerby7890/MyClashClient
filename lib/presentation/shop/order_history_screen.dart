@@ -7,6 +7,7 @@ import '../../business/shop/shop_manager.dart';
 import '../../business/subscription/subscription_engine.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import 'order_payment_screen.dart';
 
 /// 歷史訂單記錄介面 (OrderHistoryScreen)
@@ -70,7 +71,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _errorMessage = ErrorSanitizer.sanitize(e);
           _isLoading = false;
         });
       }
@@ -143,10 +144,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         ],
                       ),
                     )
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      itemCount: _orders.length,
-                      itemBuilder: (context, index) {
+                  : Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 860),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                          itemCount: _orders.length,
+                          itemBuilder: (context, index) {
                         final order = _orders[index];
                         final statusColor = _getStatusColor(order.status);
 
@@ -266,12 +270,20 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                                               ),
                                             );
                                             if (confirm == true && mounted) {
-                                              await widget.shopManager.cancelOrder(order.tradeNo);
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(content: Text(i18n.t('order_history_canceled_success'))),
-                                                );
-                                                _loadOrders();
+                                              try {
+                                                await widget.shopManager.cancelOrder(order.tradeNo);
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text(i18n.t('order_history_canceled_success'))),
+                                                  );
+                                                  _loadOrders();
+                                                }
+                                              } catch (err) {
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text(ErrorSanitizer.sanitize(err))),
+                                                  );
+                                                }
                                               }
                                             }
                                           },
@@ -313,7 +325,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             ],
                           ),
                         );
-                      },
+                          },
+                        ),
+                      ),
                     ),
     );
   }

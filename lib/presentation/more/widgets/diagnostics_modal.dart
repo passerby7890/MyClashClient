@@ -5,9 +5,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/i18n/i18n_service.dart';
 import '../../../infrastructure/core_daemon/core_daemon.dart';
+import '../../../infrastructure/core_daemon/core_state.dart';
 import '../../../infrastructure/config/app_config_service.dart';
 
 enum DiagnosticStatus { pending, running, success, warning, failed }
@@ -32,11 +35,13 @@ class DiagnosticItem {
 class DiagnosticsModal extends StatefulWidget {
   final CoreDaemon coreDaemon;
   final AppConfigService configService;
+  final bool isDialog;
 
   const DiagnosticsModal({
     super.key,
     required this.coreDaemon,
     required this.configService,
+    this.isDialog = false,
   });
 
   static Future<void> show(
@@ -44,6 +49,39 @@ class DiagnosticsModal extends StatefulWidget {
     required CoreDaemon coreDaemon,
     required AppConfigService configService,
   }) {
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux) || MediaQuery.of(context).size.width > 700;
+    if (isDesktop) {
+      return showDialog(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.65),
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 580, maxHeight: 620),
+            decoration: BoxDecoration(
+              color: AppTheme.darkSurface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppTheme.darkBorder, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: DiagnosticsModal(
+              coreDaemon: coreDaemon,
+              configService: configService,
+              isDialog: true,
+            ),
+          ),
+        ),
+      );
+    }
+
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -127,6 +165,7 @@ class _DiagnosticsModalState extends State<DiagnosticsModal> {
   }
 
   Future<void> _testLocalNetwork(DiagnosticItem item) async {
+    final i18n = I18nService.instance;
     item.status = DiagnosticStatus.running;
     final stopwatch = Stopwatch()..start();
 
@@ -136,118 +175,146 @@ class _DiagnosticsModalState extends State<DiagnosticsModal> {
         stopwatch.stop();
         if (interfaces.isNotEmpty) {
           item.status = DiagnosticStatus.success;
-          item.latencyMs = stopwatch.elapsedMilliseconds;
-          item.detail = '網路介面正常 (${interfaces.first.name})';
+          item.latencyMs = stopwatch.elapsedMilliseconds > 0 ? stopwatch.elapsedMilliseconds : 1;
+          item.detail = '${i18n.t('diag_net_ok')} (${interfaces.first.name})';
           return;
         }
       }
       stopwatch.stop();
       item.status = DiagnosticStatus.success;
-      item.latencyMs = stopwatch.elapsedMilliseconds;
-      item.detail = '本機網路在線';
+      item.latencyMs = stopwatch.elapsedMilliseconds > 0 ? stopwatch.elapsedMilliseconds : 1;
+      item.detail = i18n.t('diag_net_ok');
     } catch (e) {
       item.status = DiagnosticStatus.warning;
-      item.detail = '無法列舉網路介面: $e';
+      item.detail = i18n.t('diag_net_err');
     }
   }
 
   Future<void> _testApiServer(DiagnosticItem item) async {
+    final i18n = I18nService.instance;
     item.status = DiagnosticStatus.running;
     final apiDomain = widget.configService.currentApiDomain;
     final stopwatch = Stopwatch()..start();
 
+    http.Client? client;
     try {
-      final client = http.Client();
-      final uri = Uri.parse('$apiDomain/api/v1/passport/auth/login');
+      if (!kIsWeb) {
+        final ioClient = HttpClient();
+        ioClient.findProxy = (_) => 'DIRECT';
+        ioClient.badCertificateCallback = (cert, host, port) =>
+            InternetAddress.tryParse(host) != null;
+        client = IOClient(ioClient);
+      } else {
+        client = http.Client();
+      }
+      final uri = Uri.parse('$apiDomain/api/v1/guest/comm/config');
       final resp = await client.get(uri).timeout(const Duration(seconds: 4));
       stopwatch.stop();
-      client.close();
 
       item.latencyMs = stopwatch.elapsedMilliseconds;
-      if (resp.statusCode == 200 || resp.statusCode == 405 || resp.statusCode == 400) {
+      if (resp.statusCode >= 200 && resp.statusCode < 500) {
         item.status = DiagnosticStatus.success;
-        item.detail = '連通正常 · ${stopwatch.elapsedMilliseconds} ms';
+        item.detail = i18n.t('diag_api_ok', {'code': '${resp.statusCode}'});
       } else {
         item.status = DiagnosticStatus.warning;
-        item.detail = '伺服器回應異常 (HTTP ${resp.statusCode})';
+        item.detail = i18n.t('diag_api_warn', {'code': '${resp.statusCode}'});
       }
     } catch (e) {
       stopwatch.stop();
       item.status = DiagnosticStatus.failed;
-      item.detail = '無法連接 API: 超時或無網路';
+      item.detail = i18n.t('diag_api_err');
+    } finally {
+      client?.close();
     }
   }
 
   Future<void> _testDnsResolution(DiagnosticItem item) async {
+    final i18n = I18nService.instance;
     item.status = DiagnosticStatus.running;
     final stopwatch = Stopwatch()..start();
 
     try {
       if (!kIsWeb) {
-        final records = await InternetAddress.lookup('cloudflare-dns.com')
+        final records = await InternetAddress.lookup(AppConstants.cloudflareDnsHost)
             .timeout(const Duration(seconds: 3));
         stopwatch.stop();
         if (records.isNotEmpty) {
           item.status = DiagnosticStatus.success;
-          item.latencyMs = stopwatch.elapsedMilliseconds;
-          item.detail = 'DNS 解析快速 · ${stopwatch.elapsedMilliseconds} ms';
+          item.latencyMs = stopwatch.elapsedMilliseconds > 0 ? stopwatch.elapsedMilliseconds : 1;
+          item.detail = i18n.t('diag_doh_ok');
           return;
         }
       }
       stopwatch.stop();
       item.status = DiagnosticStatus.success;
       item.latencyMs = 28;
-      item.detail = 'DoH 解析正常 · 28 ms';
+      item.detail = i18n.t('diag_doh_ok');
     } catch (_) {
       stopwatch.stop();
       item.status = DiagnosticStatus.warning;
-      item.detail = 'DNS 查詢超時，已啟用備援';
+      item.detail = i18n.t('diag_doh_fallback');
     }
   }
 
   Future<void> _testCoreDaemon(DiagnosticItem item) async {
+    final i18n = I18nService.instance;
     item.status = DiagnosticStatus.running;
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 220));
 
     final isConnected = widget.coreDaemon.state.isConnected;
     if (isConnected) {
       item.status = DiagnosticStatus.success;
-      item.detail = 'TUN 網卡活躍 (172.19.0.1/30 已掛載)';
+      final activeNode = widget.coreDaemon.state.activeNodeName ?? 'Active';
+      final isTun = widget.coreDaemon.proxyMode == ProxyMode.tun || (!kIsWeb && Platform.isAndroid);
+      item.detail = isTun
+          ? i18n.t('diag_core_tun_active', {'node': activeNode})
+          : i18n.t('diag_core_sysproxy_active', {'node': activeNode});
     } else {
       item.status = DiagnosticStatus.warning;
-      item.detail = '代理未連線 (就緒狀態)';
+      item.detail = i18n.t('diag_core_idle');
     }
   }
 
   Future<void> _testGlobalConnectivity(DiagnosticItem item) async {
+    final i18n = I18nService.instance;
     item.status = DiagnosticStatus.running;
-    final stopwatch = Stopwatch()..start();
+    final isConnected = widget.coreDaemon.state.isConnected;
+    if (!isConnected) {
+      item.status = DiagnosticStatus.pending;
+      item.detail = i18n.t('diag_global_idle');
+      return;
+    }
 
+    final stopwatch = Stopwatch()..start();
+    http.Client? client;
     try {
-      final client = http.Client();
+      if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+        final ioClient = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 4)
+          ..findProxy = (uri) => 'PROXY 127.0.0.1:7890; DIRECT';
+        client = IOClient(ioClient);
+      } else {
+        client = http.Client();
+      }
       final resp = await client
           .get(Uri.parse('https://www.gstatic.com/generate_204'))
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 5));
       stopwatch.stop();
-      client.close();
 
       item.latencyMs = stopwatch.elapsedMilliseconds;
       if (resp.statusCode == 204 || resp.statusCode == 200) {
         item.status = DiagnosticStatus.success;
-        item.detail = '全球境外通暢 · ${stopwatch.elapsedMilliseconds} ms';
+        item.detail = i18n.t('diag_global_ok');
       } else {
         item.status = DiagnosticStatus.warning;
-        item.detail = '連線返回 HTTP ${resp.statusCode}';
+        item.detail = i18n.t('diag_global_warn', {'code': '${resp.statusCode}'});
       }
     } catch (_) {
       stopwatch.stop();
-      if (widget.coreDaemon.state.isConnected) {
-        item.status = DiagnosticStatus.warning;
-        item.detail = '節點未響應或連線受限';
-      } else {
-        item.status = DiagnosticStatus.pending;
-        item.detail = '未開啟連線時無法訪問境外網站';
-      }
+      item.status = DiagnosticStatus.warning;
+      item.detail = i18n.t('diag_global_err');
+    } finally {
+      client?.close();
     }
   }
 
@@ -255,26 +322,29 @@ class _DiagnosticsModalState extends State<DiagnosticsModal> {
   Widget build(BuildContext context) {
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.78,
+        maxHeight: widget.isDialog ? 620 : MediaQuery.of(context).size.height * 0.78,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkSurface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: widget.isDialog ? BorderRadius.circular(20) : const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 頂部小把手
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(2),
+          // 頂部小把手 (桌面 Dialog 模式下隱藏)
+          if (!widget.isDialog) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
+          ] else
+            const SizedBox(height: 16),
 
           // 標題列
           Padding(
@@ -296,16 +366,27 @@ class _DiagnosticsModalState extends State<DiagnosticsModal> {
                     ),
                   ],
                 ),
-                TextButton.icon(
-                  onPressed: _isRunningAll ? null : _startDiagnostics,
-                  icon: _isRunningAll
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryCyan),
-                        )
-                      : const Icon(Icons.refresh_rounded, size: 16),
-                  label: Text(_isRunningAll ? I18nService.instance.t('diag_testing') : I18nService.instance.t('diag_retest')),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _isRunningAll ? null : _startDiagnostics,
+                      icon: _isRunningAll
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryCyan),
+                            )
+                          : const Icon(Icons.refresh_rounded, size: 16),
+                      label: Text(_isRunningAll ? I18nService.instance.t('diag_testing') : I18nService.instance.t('diag_retest')),
+                    ),
+                    if (widget.isDialog) ...[
+                      const SizedBox(width: 6),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 20, color: Colors.white70),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

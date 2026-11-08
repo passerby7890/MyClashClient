@@ -11,7 +11,36 @@ enum CoreStatus {
 enum ProxyMode {
   rule,
   global,
+  direct,
   tun,
+}
+
+extension ProxyModeRoutingExt on ProxyMode {
+  String get routingString {
+    switch (this) {
+      case ProxyMode.global:
+        return 'global';
+      case ProxyMode.direct:
+        return 'direct';
+      case ProxyMode.tun:
+        return 'tun';
+      case ProxyMode.rule:
+        return 'rule';
+    }
+  }
+
+  static ProxyMode fromRoutingString(String mode) {
+    switch (mode.toLowerCase()) {
+      case 'global':
+        return ProxyMode.global;
+      case 'direct':
+        return ProxyMode.direct;
+      case 'tun':
+        return ProxyMode.tun;
+      default:
+        return ProxyMode.rule;
+    }
+  }
 }
 
 /// Mihomo 核心狀態封裝

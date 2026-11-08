@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../business/auth/auth_manager.dart';
 import '../../business/auth/traffic_log_model.dart';
 import '../../core/i18n/i18n_service.dart';
+import '../../core/utils/error_sanitizer.dart';
 import 'desktop_theme_tokens.dart';
 
 /// 專職雙欄流量明細視圖 (DesktopTrafficView)
@@ -37,7 +38,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
       try {
         await widget.authManager.fetchUserInfo();
       } catch (userErr) {
-        debugPrint('[DesktopTrafficView] 更新用戶資料警告 (續用快取): $userErr');
+        SafeLog.d('[DesktopTrafficView] 更新用戶資料警告 (續用快取): ${ErrorSanitizer.sanitize(userErr)}');
       }
       final logs = await widget.authManager.fetchTrafficLogs();
       if (mounted) {
@@ -48,7 +49,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
         });
       }
     } catch (e, stack) {
-      debugPrint('[DesktopTrafficView] 載入流量日誌例外: $e\n$stack');
+      SafeLog.d('[DesktopTrafficView] 載入流量日誌例外: ${ErrorSanitizer.sanitize(e)}');
       if (mounted) {
         setState(() {
           _logs = [];
@@ -114,14 +115,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                           child: const Icon(Icons.pie_chart_rounded, color: DesktopThemeTokens.neonCyan, size: 20),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            i18n.t('traffic_overview'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: DesktopThemeTokens.titleStyle,
-                          ),
-                        ),
+                        Text(i18n.t('traffic_overview'), style: DesktopThemeTokens.titleStyle),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -244,7 +238,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                     const SizedBox(height: 18),
 
                     // 4. 2x2 訂閱與流量健康度矩陣 (徹底填滿下半部空間，消除黑洞)
-                    _buildHealthMetricsGrid(user, ratio),
+                    _buildHealthMetricsGrid(user, ratio, i18n),
                   ],
                 ),
               ),
@@ -282,14 +276,13 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                       Expanded(
                         child: Text(
                           i18n.t('traffic_daily_log'),
+                          style: DesktopThemeTokens.titleStyle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: DesktopThemeTokens.titleStyle,
                         ),
                       ),
-                      const SizedBox(width: 8),
                       IconButton(
-                        tooltip: '重新整理',
+                        tooltip: i18n.t('refresh'),
                         icon: _isLoading
                             ? const SizedBox(
                                 width: 16,
@@ -304,12 +297,12 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                   const SizedBox(height: 14),
 
                   // 2. 近期消耗峰值與日均統計橫幅 (高約 86px)
-                  _buildSummaryBanner(_logs, maxLogBytes, avgRate),
+                  _buildSummaryBanner(_logs, maxLogBytes, avgRate, i18n),
                   const SizedBox(height: 12),
 
                   // 3. 近期流量消耗趨勢圖 (Trend Sparkline)
                   if (_logs.isNotEmpty) ...[
-                    _buildTrendChart(_logs, maxLogBytes),
+                    _buildTrendChart(_logs, maxLogBytes, i18n),
                     const SizedBox(height: 12),
                   ],
 
@@ -332,7 +325,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                                     TextButton.icon(
                                       onPressed: _loadTrafficLogs,
                                       icon: const Icon(Icons.refresh_rounded, size: 14, color: DesktopThemeTokens.neonCyan),
-                                      label: const Text('點擊同步後端明細', style: TextStyle(fontSize: 12, color: DesktopThemeTokens.neonCyan)),
+                                      label: Text(i18n.t('refresh'), style: const TextStyle(fontSize: 12, color: DesktopThemeTokens.neonCyan)),
                                     ),
                                   ],
                                 ),
@@ -387,7 +380,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                                                 border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.3), width: 0.8),
                                               ),
                                               child: Text(
-                                                '倍率: ${item.serverRate.toStringAsFixed(2)}x',
+                                                i18n.t('traffic_ratio', {'rate': item.serverRate.toStringAsFixed(2)}),
                                                 style: const TextStyle(fontSize: 9.5, color: Color(0xFF38BDF8), fontWeight: FontWeight.w600),
                                               ),
                                             ),
@@ -512,7 +505,10 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
   }
 
   /// 2x2 訂閱與流量健康度矩陣 (填滿左卡下半部)
-  Widget _buildHealthMetricsGrid(dynamic user, double ratio) {
+  Widget _buildHealthMetricsGrid(dynamic user, double ratio, I18nService i18n) {
+    final planDisplay = (user?.planName != null && (user!.planName as String).isNotEmpty)
+        ? user.planName as String
+        : i18n.t('vip_badge');
     return Column(
       children: [
         Row(
@@ -521,8 +517,8 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
               child: _buildGridCell(
                 icon: Icons.workspace_premium_rounded,
                 iconColor: const Color(0xFFA855F7),
-                title: '當前方案',
-                value: user?.planName ?? (user?.planId != null ? 'VIP 旗艦節點方案' : 'VIP 專屬高速通道'),
+                title: i18n.t('traffic_current_plan'),
+                value: planDisplay,
               ),
             ),
             const SizedBox(width: 10),
@@ -530,8 +526,8 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
               child: _buildGridCell(
                 icon: Icons.calendar_month_rounded,
                 iconColor: const Color(0xFF38BDF8),
-                title: '到期時間',
-                value: user?.expiredDateFormatted ?? '長期有效',
+                title: i18n.t('expire_time'),
+                value: user?.expiredDateFormatted ?? i18n.t('never_expire'),
               ),
             ),
           ],
@@ -543,7 +539,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
               child: _buildGridCell(
                 icon: Icons.insights_rounded,
                 iconColor: const Color(0xFFF59E0B),
-                title: '本週期消耗',
+                title: i18n.t('traffic_cycle_used'),
                 value: '${user?.usedTrafficFormatted ?? '0.00 GB'} (${(ratio * 100).toStringAsFixed(1)}%)',
               ),
             ),
@@ -552,8 +548,8 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
               child: _buildGridCell(
                 icon: Icons.verified_rounded,
                 iconColor: const Color(0xFF10B981),
-                title: '計費狀態',
-                value: user?.isExpired == true ? '已過期 · 需續費' : '計費正常 · 服務中',
+                title: i18n.t('traffic_billing_status'),
+                value: user?.isExpired == true ? i18n.t('traffic_billing_abnormal') : i18n.t('traffic_billing_normal'),
               ),
             ),
           ],
@@ -614,7 +610,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
   }
 
   /// 近期流量消耗趨勢圖 (Trend Sparkline)
-  Widget _buildTrendChart(List<TrafficLogModel> logs, int maxLogBytes) {
+  Widget _buildTrendChart(List<TrafficLogModel> logs, int maxLogBytes, I18nService i18n) {
     if (logs.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -635,10 +631,10 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
             children: [
               const Icon(Icons.show_chart_rounded, size: 14, color: DesktopThemeTokens.neonCyan),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  '近期流量消耗走勢',
-                  style: TextStyle(
+                  i18n.t('traffic_recent_trend'),
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: DesktopThemeTokens.textMuted,
@@ -649,7 +645,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
               ),
               const SizedBox(width: 8),
               Text(
-                '最高單日: ${TrafficLogModel.formatBytes(maxLogBytes)}',
+                i18n.t('traffic_peak_prefix', {'value': TrafficLogModel.formatBytes(maxLogBytes)}),
                 style: const TextStyle(
                   fontSize: 10,
                   color: Color(0xFF38BDF8),
@@ -726,7 +722,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
   }
 
   /// 近期消耗峰值與日均統計橫幅 (高約 86px)
-  Widget _buildSummaryBanner(List<TrafficLogModel> logs, int maxLogBytes, double avgRate) {
+  Widget _buildSummaryBanner(List<TrafficLogModel> logs, int maxLogBytes, double avgRate, I18nService i18n) {
     int totalLoggedBytes = 0;
     for (final l in logs) {
       totalLoggedBytes += l.totalBytes;
@@ -750,8 +746,10 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
         children: [
           Expanded(
             child: _buildBannerColumn(
-              label: '歷史統計明細',
-              value: logs.isEmpty ? '0 筆記錄' : '${logs.length} 筆天數 (${TrafficLogModel.formatBytes(totalLoggedBytes)})',
+              label: i18n.t('traffic_stat_summary'),
+              value: logs.isEmpty
+                  ? '0'
+                  : '${i18n.t('traffic_days_count', {'count': '${logs.length}'})} · ${TrafficLogModel.formatBytes(totalLoggedBytes)}',
               color: Colors.white,
               icon: Icons.analytics_outlined,
             ),
@@ -759,7 +757,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
           Container(width: 1, height: 32, margin: const EdgeInsets.symmetric(horizontal: 8), color: Colors.white.withOpacity(0.1)),
           Expanded(
             child: _buildBannerColumn(
-              label: '最高單日峰值',
+              label: i18n.t('traffic_peak_day'),
               value: logs.isEmpty ? '--' : TrafficLogModel.formatBytes(maxLogBytes),
               color: const Color(0xFF38BDF8),
               icon: Icons.trending_up_rounded,
@@ -768,7 +766,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
           Container(width: 1, height: 32, margin: const EdgeInsets.symmetric(horizontal: 8), color: Colors.white.withOpacity(0.1)),
           Expanded(
             child: _buildBannerColumn(
-              label: '平均節點倍率',
+              label: i18n.t('traffic_avg_rate'),
               value: logs.isEmpty ? '1.00x' : '${avgRate.toStringAsFixed(2)}x',
               color: const Color(0xFFA855F7),
               icon: Icons.speed_rounded,

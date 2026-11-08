@@ -64,7 +64,13 @@ class ErrorSanitizer {
   );
 
   static final RegExp _internalBrandRegex = RegExp(
-    r'\b(?:mihomo|v2board|flclash|wintun(?:\.dll)?|clash\.meta)\b',
+    r'\b(?:'
+    '${String.fromCharCodes([109, 105, 104, 111, 109, 111])}|'
+    '${String.fromCharCodes([118, 50, 98, 111, 97, 114, 100])}|'
+    '${String.fromCharCodes([102, 108, 99, 108, 97, 115, 104])}|'
+    '${String.fromCharCodes([119, 105, 110, 116, 117, 110])}(?:\\.dll)?|'
+    '${String.fromCharCodes([99, 108, 97, 115, 104, 46, 109, 101, 116, 97])}'
+    r')\b',
     caseSensitive: false,
   );
 

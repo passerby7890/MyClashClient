@@ -115,7 +115,14 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
                           child: const Icon(Icons.pie_chart_rounded, color: DesktopThemeTokens.neonCyan, size: 20),
                         ),
                         const SizedBox(width: 12),
-                        Text(i18n.t('traffic_overview'), style: DesktopThemeTokens.titleStyle),
+                        Expanded(
+                          child: Text(
+                            i18n.t('traffic_overview'),
+                            style: DesktopThemeTokens.titleStyle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),

@@ -201,12 +201,12 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 頂部整合控制列 (搜尋框 + 分類按鈕 + 測速與優選，拔除雙重重複標題)
-          Row(
-            children: [
-              // 搜尋框
-              SizedBox(
-                width: 222,
+          // 頂部整合控制列 (搜尋框 + 分類按鈕 + 測速與優選，自適應防溢出)
+          LayoutBuilder(
+            builder: (context, headerConstraints) {
+              final isCompact = headerConstraints.maxWidth < 1180;
+              final searchWidget = SizedBox(
+                width: isCompact ? 170 : 210,
                 height: 36,
                 child: Container(
                   decoration: BoxDecoration(
@@ -244,103 +244,132 @@ class _DesktopNodesViewState extends State<DesktopNodesView>
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
+              );
 
-              // 分類標籤 + 收藏篩選
-              _buildContinentTab(0, i18n.t('node_tab_all')),
-              const SizedBox(width: 6),
-              _buildContinentTab(1, i18n.t('node_tab_asia')),
-              const SizedBox(width: 6),
-              _buildContinentTab(2, i18n.t('node_tab_western')),
-              const SizedBox(width: 6),
-              _buildContinentTab(3, i18n.t('node_tab_others')),
-              const SizedBox(width: 6),
-              InkWell(
-                onTap: () => setState(() => _favoritesOnly = !_favoritesOnly),
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _favoritesOnly ? Colors.amberAccent.withOpacity(0.16) : DesktopThemeTokens.cardInnerBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.borderColor,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _favoritesOnly ? Icons.star_rounded : Icons.star_outline_rounded,
-                        size: 14,
-                        color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.textMuted,
+              final filterTabs = [
+                _buildContinentTab(0, i18n.t('node_tab_all')),
+                const SizedBox(width: 6),
+                _buildContinentTab(1, i18n.t('node_tab_asia')),
+                const SizedBox(width: 6),
+                _buildContinentTab(2, i18n.t('node_tab_western')),
+                const SizedBox(width: 6),
+                _buildContinentTab(3, i18n.t('node_tab_others')),
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: () => setState(() => _favoritesOnly = !_favoritesOnly),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _favoritesOnly ? Colors.amberAccent.withOpacity(0.16) : DesktopThemeTokens.cardInnerBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.borderColor,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        i18n.t('node_tab_favorites'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: _favoritesOnly ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _favoritesOnly ? Icons.star_rounded : Icons.star_outline_rounded,
+                          size: 14,
                           color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.textMuted,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Text(
+                          i18n.t('node_tab_favorites'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: _favoritesOnly ? FontWeight.bold : FontWeight.normal,
+                            color: _favoritesOnly ? Colors.amberAccent : DesktopThemeTokens.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ];
 
-              const Spacer(),
+              final actionButtons = [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: DesktopThemeTokens.textPrimary,
+                    side: const BorderSide(color: DesktopThemeTokens.borderColor),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: (_isRefreshing || _isTesting) ? null : _handleRefreshNodes,
+                  icon: RotationTransition(
+                    turns: _rotationController,
+                    child: const Icon(Icons.refresh_rounded, size: 16),
+                  ),
+                  label: Text(
+                    i18n.t('refresh_nodes'),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: DesktopThemeTokens.neonCyan,
+                    side: const BorderSide(color: DesktopThemeTokens.borderColor),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _handleSelectFastest,
+                  icon: const Icon(Icons.bolt_rounded, size: 16),
+                  label: Text(i18n.t('best_latency'), style: const TextStyle(fontSize: 12)),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: DesktopThemeTokens.neonCyan,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _isTesting ? null : _handleBatchPing,
+                  icon: _isTesting
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                      : const Icon(Icons.speed_rounded, size: 16),
+                  label: Text(i18n.t('speed_test'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ];
 
-              // 手動刷新節點按鈕 (支援旋轉動效與防連點鎖定)
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DesktopThemeTokens.textPrimary,
-                  side: const BorderSide(color: DesktopThemeTokens.borderColor),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: (_isRefreshing || _isTesting) ? null : _handleRefreshNodes,
-                icon: RotationTransition(
-                  turns: _rotationController,
-                  child: const Icon(Icons.refresh_rounded, size: 16),
-                ),
-                label: Text(
-                  i18n.t('refresh_nodes'),
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: 8),
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          searchWidget,
+                          const SizedBox(width: 10),
+                          ...filterTabs,
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: actionButtons,
+                    ),
+                  ],
+                );
+              }
 
-              // 自動優選按鈕
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DesktopThemeTokens.neonCyan,
-                  side: const BorderSide(color: DesktopThemeTokens.borderColor),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: _handleSelectFastest,
-                icon: const Icon(Icons.bolt_rounded, size: 16),
-                label: Text(i18n.t('best_latency'), style: const TextStyle(fontSize: 12)),
-              ),
-              const SizedBox(width: 8),
-
-              // 批量測速按鈕
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DesktopThemeTokens.neonCyan,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: _isTesting ? null : _handleBatchPing,
-                icon: _isTesting
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                    : const Icon(Icons.speed_rounded, size: 16),
-                label: Text(i18n.t('speed_test'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
-            ],
+              return Row(
+                children: [
+                  searchWidget,
+                  const SizedBox(width: 10),
+                  ...filterTabs,
+                  const Spacer(),
+                  ...actionButtons,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 14),
 

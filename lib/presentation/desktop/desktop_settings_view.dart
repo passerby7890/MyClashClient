@@ -525,9 +525,13 @@ class _DesktopSettingsViewState extends State<DesktopSettingsView> {
                 child: Icon(icon, color: DesktopThemeTokens.accentCyan, size: 16),
               ),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
               ),
             ],
           ),

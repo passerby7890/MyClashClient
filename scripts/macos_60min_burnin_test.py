@@ -318,6 +318,7 @@ rules:
 
 mihomo_bin = None
 for candidate in [
+    DIST_MAC / "Tianhe.app" / "Contents" / "MacOS" / "tianhe_engine",
     DIST_MAC / "Tianhe.app" / "Contents" / "Resources" / "tools" / "mihomo" / "mihomo",
     PROJECT_ROOT / "tools" / "mihomo" / "mihomo",
     PROJECT_ROOT / "tools" / "mihomo" / "mihomo-darwin-arm64",

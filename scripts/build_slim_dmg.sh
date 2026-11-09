@@ -100,7 +100,7 @@ done
 echo "🔗 建立向後相容軟連結 (Symlink 零冗餘瘦身)..."
 APP_TOOLS_DIR="$APP_BUNDLE/Contents/Resources/tools/mihomo"
 mkdir -p "$APP_TOOLS_DIR"
-ln -sf "../../MacOS/tianhe_engine" "$APP_TOOLS_DIR/mihomo"
+ln -sf "../../../MacOS/tianhe_engine" "$APP_TOOLS_DIR/mihomo"
 for db_file in Country.mmdb GeoIP.dat GeoSite.dat ASN.mmdb geoip.metadb; do
     if [ -f "$MIHOMO_DIR/$db_file" ]; then
         ln -sf "../../$db_file" "$APP_TOOLS_DIR/$db_file"

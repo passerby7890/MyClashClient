@@ -103,17 +103,25 @@ def test_05_info_plist_defeature():
     identifier = pl.get("CFBundleIdentifier", "")
     return f"CFBundleName: {name}, BundleId: {identifier} 去特徵化完畢"
 
+def _get_mihomo_executable():
+    engine_bin = APP_BUNDLE / "Contents" / "MacOS" / "tianhe_engine"
+    tools_bin = APP_BUNDLE / "Contents" / "Resources" / "tools" / "mihomo" / "mihomo"
+    if engine_bin.exists():
+        return engine_bin
+    if tools_bin.exists():
+        return tools_bin
+    return engine_bin
+
 def test_06_embedded_mihomo_tools():
-    tools_dir = APP_BUNDLE / "Contents" / "Resources" / "tools" / "mihomo"
-    if not tools_dir.exists():
-        raise FileNotFoundError(f"內嵌 mihomo 工具目錄不存在: {tools_dir}")
-    mihomo_bin = tools_dir / "mihomo"
+    mihomo_bin = _get_mihomo_executable()
     if not mihomo_bin.exists():
-        raise FileNotFoundError(f"內嵌 mihomo 二進位不存在: {mihomo_bin}")
+        raise FileNotFoundError(f"內嵌核心二進位不存在: {mihomo_bin}")
     if not os.access(mihomo_bin, os.X_OK):
-        raise PermissionError("mihomo 二進位缺少 +x 執行權限")
+        raise PermissionError(f"{mihomo_bin} 二進位缺少 +x 執行權限")
+    res_dir = APP_BUNDLE / "Contents" / "Resources"
+    tools_dir = APP_BUNDLE / "Contents" / "Resources" / "tools" / "mihomo"
     required_dbs = ["Country.mmdb", "GeoIP.dat", "GeoSite.dat"]
-    found = [db for db in required_dbs if (tools_dir / db).exists()]
+    found = [db for db in required_dbs if (res_dir / db).exists() or (tools_dir / db).exists()]
     return f"mihomo 可執行檔與離線庫已封裝: {found}"
 
 # ==============================================================================
@@ -125,14 +133,15 @@ TEST_SECRET = "tianhe_acceptance_secret_12345"
 
 def test_07_core_startup():
     global core_proc
-    mihomo_bin = APP_BUNDLE / "Contents" / "Resources" / "tools" / "mihomo" / "mihomo"
+    mihomo_bin = _get_mihomo_executable()
     work_dir = PROJECT_ROOT / "dist_mac" / "test_core_dir"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # 複製地理資料庫至測試工作目錄
+    res_dir = APP_BUNDLE / "Contents" / "Resources"
     tools_dir = APP_BUNDLE / "Contents" / "Resources" / "tools" / "mihomo"
     for db in ["Country.mmdb", "GeoIP.dat", "GeoSite.dat", "geoip.metadb", "ASN.mmdb"]:
-        src = tools_dir / db
+        src = (res_dir / db) if (res_dir / db).exists() else (tools_dir / db)
         if src.exists() and not (work_dir / db).exists():
             try:
                 import shutil
@@ -164,6 +173,7 @@ rules:
     test_yaml.write_text(yaml_content, encoding="utf-8")
 
     # 終結既有進程
+    subprocess.run(["killall", "-9", "tianhe_engine"], capture_output=True)
     subprocess.run(["killall", "-9", "mihomo"], capture_output=True)
     time.sleep(0.3)
 
@@ -245,6 +255,7 @@ def test_14_process_cleanup():
         except Exception:
             core_proc.kill()
         core_proc = None
+    subprocess.run(["killall", "-9", "tianhe_engine"], capture_output=True)
     subprocess.run(["killall", "-9", "mihomo"], capture_output=True)
     time.sleep(0.3)
     return "孤兒 Mihomo 進程已全部乾淨釋放"

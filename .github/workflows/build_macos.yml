@@ -64,6 +64,7 @@ jobs:
 
           mkdir -p audit_screenshots
           mkdir -p ~/Library/Logs/TianheNetwork
+          chmod +x dist_mac/Tianhe.app/Contents/MacOS/tianhe_engine || true
           chmod +x dist_mac/Tianhe.app/Contents/Resources/tools/mihomo/mihomo || true
 
           export TIANHE_AUTO_EMAIL="test17318@outlook.com"

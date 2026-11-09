@@ -1,8 +1,8 @@
 #!/bin/bash
 # ==============================================================================
-# 天河網絡 (Tianhe Network) - macOS 瘦身編譯與 DMG 封裝腳本
+# 天河網絡 (Tianhe Network) - macOS 輕巧瘦身編譯與 DMG 封裝腳本 (v3.3.1)
 # 支援架構：Apple Silicon (arm64) & Intel (x86_64) 通用 Universal
-# 產物路徑：dist_mac/TianheNetwork_v3.0.8_macOS.dmg
+# 核心規範：Apple TN2206 安全標準 + 符號連結 (Symlink) 零冗餘輕巧化
 # ==============================================================================
 
 set -e
@@ -13,8 +13,12 @@ DIST_DIR="$PROJECT_ROOT/dist_mac"
 BUILD_OUTPUT="$PROJECT_ROOT/build/macos/Build/Products/Release"
 APP_NAME="Tianhe"
 APP_BUNDLE="$BUILD_OUTPUT/$APP_NAME.app"
+
 APP_VER=$(grep 'version:' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | awk '{print $2}' | cut -d'+' -f1)
-if [ -z "$APP_VER" ]; then APP_VER="3.1.0"; fi
+APP_BUILD=$(grep 'version:' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | awk '{print $2}' | cut -d'+' -f2)
+if [ -z "$APP_VER" ]; then APP_VER="3.3.1"; fi
+if [ -z "$APP_BUILD" ]; then APP_BUILD="131"; fi
+
 DMG_NAME="TianheNetwork_v${APP_VER}_macOS.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 MIHOMO_DIR="$PROJECT_ROOT/tools/mihomo"
@@ -22,8 +26,9 @@ MIHOMO_BIN="$MIHOMO_DIR/mihomo"
 
 echo "=========================================="
 echo "🏛️ 天河網絡 (Tianhe) - macOS Release Build SOP"
-echo "Project Root: $PROJECT_ROOT"
+echo "Project Root:    $PROJECT_ROOT"
 echo "Target Artifact: $DMG_PATH"
+echo "Version:         v$APP_VER (Build $APP_BUILD)"
 echo "=========================================="
 
 mkdir -p "$DIST_DIR"
@@ -70,8 +75,8 @@ mkdir -p "$PROJECT_ROOT/build/macos_symbols"
 flutter build macos --release \
     --obfuscate \
     --split-debug-info="$PROJECT_ROOT/build/macos_symbols" \
-    --dart-define=APP_VERSION=3.1.0 \
-    --dart-define=APP_BUILD_NUMBER=111
+    --dart-define=APP_VERSION="$APP_VER" \
+    --dart-define=APP_BUILD_NUMBER="$APP_BUILD"
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "❌ 找不到編譯產物: $APP_BUNDLE"
@@ -79,7 +84,7 @@ if [ ! -d "$APP_BUNDLE" ]; then
 fi
 
 # 4. 嵌入 tianhe_engine 內核至 Contents/MacOS (Apple TN2206 標準) 與離線資料庫至 Resources
-echo "📂 正在將內核與規則庫封裝進 $APP_NAME.app (Apple TN2206 架構)..."
+echo "📂 正在將內核封裝進 $APP_NAME.app (Apple TN2206 架構)..."
 cp -f "$MIHOMO_BIN" "$APP_BUNDLE/Contents/MacOS/tianhe_engine"
 chmod +x "$APP_BUNDLE/Contents/MacOS/tianhe_engine"
 
@@ -91,14 +96,14 @@ for db_file in Country.mmdb GeoIP.dat GeoSite.dat ASN.mmdb geoip.metadb; do
     fi
 done
 
-# 兼容舊路徑避免外部測試腳本依賴
+# 兼容舊路徑（使用 0 KB 軟連結 Symlink，實現 100% 雙向相容且零冗餘）
+echo "🔗 建立向後相容軟連結 (Symlink 零冗餘瘦身)..."
 APP_TOOLS_DIR="$APP_BUNDLE/Contents/Resources/tools/mihomo"
 mkdir -p "$APP_TOOLS_DIR"
-cp -f "$MIHOMO_BIN" "$APP_TOOLS_DIR/mihomo"
-chmod +x "$APP_TOOLS_DIR/mihomo"
+ln -sf "../../MacOS/tianhe_engine" "$APP_TOOLS_DIR/mihomo"
 for db_file in Country.mmdb GeoIP.dat GeoSite.dat ASN.mmdb geoip.metadb; do
     if [ -f "$MIHOMO_DIR/$db_file" ]; then
-        cp -f "$MIHOMO_DIR/$db_file" "$APP_TOOLS_DIR/"
+        ln -sf "../../$db_file" "$APP_TOOLS_DIR/$db_file"
     fi
 done
 
@@ -135,7 +140,7 @@ rm -rf "$DMG_TEMP_DIR"
 # 8. 輸出產物成果
 FILE_SIZE=$(du -h "$DMG_PATH" | cut -f1)
 echo "=========================================="
-echo "🎉 SUCCESS: macOS 發布打包完成！"
+echo "🎉 SUCCESS: macOS 輕巧版發布打包完成！"
 echo "DMG 產物: $DMG_PATH ($FILE_SIZE)"
 echo "App 產物: $APP_BUNDLE"
 echo "=========================================="

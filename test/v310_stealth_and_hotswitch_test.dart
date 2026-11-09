@@ -8,11 +8,11 @@ import 'package:flclash_v2board_client/business/subscription/node_model.dart';
 
 void main() {
   group('🛡️ 天河網絡 v3.1.0 (Build 111) 零洩漏隱密性與節點熱切換全自動化驗收測試', () {
-    test('1. 版本號與 Build Number 單一事實來源對齊 3.1.0+111', () {
-      expect(AppConstants.appVersion, equals('3.1.0'));
-      expect(AppConstants.appBuildNumber, equals(111));
-      expect(AppConstants.fullVersionDisplay, equals('v3.1.0 (Build 111)'));
-      expect(AppConstants.versionTag, equals('v3.1.0'));
+    test('1. 版本號與 Build Number 單一事實來源對齊 3.3.1+131', () {
+      expect(AppConstants.appVersion, equals('3.3.1'));
+      expect(AppConstants.appBuildNumber, equals(131));
+      expect(AppConstants.fullVersionDisplay, equals('v3.3.1 (Build 131)'));
+      expect(AppConstants.versionTag, equals('v3.3.1'));
     });
 
     test('2. 常數層 0x5A XOR 混淆解密驗證 (Crisp, DoH, Host 零明文硬編碼)', () {

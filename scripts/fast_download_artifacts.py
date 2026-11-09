@@ -24,8 +24,8 @@ DIST_MAC.mkdir(parents=True, exist_ok=True)
 AUDIT_MAC.mkdir(parents=True, exist_ok=True)
 
 artifacts = [
-    ("mac-acceptance-evidence", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13491948242/zip", AUDIT_MAC),
-    ("TianheNetwork_v3.1.0_macOS", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13491973100/zip", DIST_MAC)
+    ("mac-acceptance-evidence", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13606051872/zip", AUDIT_MAC),
+    ("TianheNetwork_v3.1.0_macOS", "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13605184469/zip", DIST_MAC)
 ]
 
 def download_resumable(name, api_url, target_dir):

@@ -48,7 +48,7 @@ class _DesktopTrafficViewState extends State<DesktopTrafficView> {
           _isLoading = false;
         });
       }
-    } catch (e, stack) {
+    } catch (e) {
       SafeLog.d('[DesktopTrafficView] 載入流量日誌例外: ${ErrorSanitizer.sanitize(e)}');
       if (mounted) {
         setState(() {

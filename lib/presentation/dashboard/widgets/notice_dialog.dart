@@ -1,12 +1,12 @@
 // lib/presentation/dashboard/widgets/notice_dialog.dart
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../business/auth/notice_model.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/i18n/i18n_service.dart';
+import '../../widgets/html_announcement_renderer.dart';
 
-/// 機場彈窗公告對話框 (對齊 Tianhe 3.0 彈窗功能)
+/// 機場彈窗公告對話框 (支援原生 HTML 富文本、Emoji 原色呈現與超連結跳轉)
 class NoticeDialog extends StatefulWidget {
   final NoticeModel notice;
 
@@ -38,7 +38,10 @@ class _NoticeDialogState extends State<NoticeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final cleanText = widget.notice.cleanContent;
+    // 優先使用原始 HTML 內容，若為空則降級至 cleanContent
+    final htmlContent = widget.notice.content.isNotEmpty
+        ? widget.notice.content
+        : widget.notice.cleanContent;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -98,89 +101,40 @@ class _NoticeDialogState extends State<NoticeDialog> {
                   ),
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
-                    child: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                    ),
                   ),
                 ],
               ),
             ),
 
-            // 內文區域
+            // 內文區域 (原生 HTML 富文本 + Emoji + 智慧段落)
             Flexible(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 380),
+                constraints: const BoxConstraints(maxHeight: 460),
                 child: Scrollbar(
                   controller: _scrollController,
                   thumbVisibility: true,
                   child: SingleChildScrollView(
                     controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(22, 18, 22, 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SelectableText(
-                          cleanText,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            height: 1.65,
-                            color: Colors.white,
-                          ),
-                        ),
-                    const SizedBox(height: 16),
-
-                    // 若包含優惠代碼或機器人，提供快捷複製按鈕
-                    if (cleanText.contains('buyback') || cleanText.contains('@THJSQBOT')) ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.darkSurface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.darkBorder),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.card_giftcard_rounded, color: Color(0xFFFFA000), size: 18),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${I18nService.instance.t('notice_coupon_prefix')}buyback',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            TextButton(
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                              onPressed: () {
-                                Clipboard.setData(const ClipboardData(text: 'buyback'));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(I18nService.instance.t('notice_coupon_copied')),
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
-                              },
-                              child: Text(I18nService.instance.t('copy_btn'), style: const TextStyle(color: AppTheme.primaryCyan)),
-                            ),
-                          ],
-                        ),
+                    child: HtmlAnnouncementRenderer(
+                      html: htmlContent,
+                      defaultTextStyle: const TextStyle(
+                        fontSize: 14,
+                        height: 1.65,
+                        color: Color(0xFFE2E8F0),
+                        fontFamilyFallback: HtmlAnnouncementRenderer.emojiFontFallback,
                       ),
-                    ],
-                  ],
                     ),
                   ),
                 ),
               ),
             ),
 
-            // 底部分隔與操作列 (增加頂部微邊界與留白，避免滾動文字緊貼按鈕)
+            // 底部分隔與操作列
             Container(
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,

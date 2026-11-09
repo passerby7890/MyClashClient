@@ -161,21 +161,22 @@ jobs:
       - name: "9. 💿 上傳 macOS DMG 建構產物"
         uses: actions/upload-artifact@v4
         with:
-          name: TianheNetwork_v3.1.0_macOS
-          path: dist_mac/TianheNetwork_v3.1.0_macOS.dmg
+          name: TianheNetwork_v3.3.1_macOS
+          path: dist_mac/*.dmg
           if-no-files-found: error
 
       - name: "10. 🏷️ 自動發布 Release (若觸發 tag)"
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist_mac/TianheNetwork_v3.1.0_macOS.dmg
+          files: dist_mac/*.dmg
           name: Tianhe Network macOS Client ${{ github.ref_name }}
           body: |
-            ## 🍎 天河網絡 (Tianhe Network) macOS 旗艦版
+            ## 🍎 天河網絡 (Tianhe Network) macOS 輕巧旗艦版
             - 版本：${{ github.ref_name }}
             - 支援架構：Apple Silicon (M1/M2/M3/M4) + Intel (x86_64) 通用 Universal
             - 核心引擎：Mihomo Meta + macOS 原生 networksetup 系統代理控制
+            - 安全規範：遵循 Apple TN2206 標準架構與零冗餘輕巧化封裝
           draft: false
           prerelease: false
         env:

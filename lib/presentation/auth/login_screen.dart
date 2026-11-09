@@ -4,7 +4,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/utils/error_sanitizer.dart';
 import '../../business/auth/auth_manager.dart';
-import '../../business/auth/user_model.dart';
 import '../../infrastructure/config/app_config_service.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'register_screen.dart';

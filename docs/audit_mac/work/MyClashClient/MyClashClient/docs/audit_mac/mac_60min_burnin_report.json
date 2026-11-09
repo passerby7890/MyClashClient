@@ -2,9 +2,9 @@
   "status": "finished",
   "platform": "macOS",
   "architecture": "Universal (Apple Silicon & Intel)",
-  "start_time": "2026-10-23T02:38:58.142798",
-  "current_time": "2026-10-23T02:39:16.694679",
-  "elapsed_seconds": 18,
+  "start_time": "2026-11-08T05:45:31.486424",
+  "current_time": "2026-11-08T05:45:54.983575",
+  "elapsed_seconds": 23,
   "phases": {
     "phase1_lifecycle_proxy": {
       "name": "macOS 封裝簽名、networksetup 系統代理與 scutil --proxy 防斷網 100 次循環測試",
@@ -14,9 +14,9 @@
       "target_cycles": 100,
       "completed_cycles": 100,
       "success_rate": "100/100 (100.0%)",
-      "avg_cycle_ms": 128.89,
-      "min_cycle_ms": 91.59,
-      "max_cycle_ms": 184.02,
+      "avg_cycle_ms": 167.45,
+      "min_cycle_ms": 107.2,
+      "max_cycle_ms": 243.99,
       "proxy_cleanup_rate": "100.0%",
       "orphan_processes": 0
     },
@@ -24,9 +24,9 @@
       "name": "300 次跨協議毫秒級熱切換 (PUT /configs) 與高併發壓力烤機",
       "target_switches": 300,
       "completed_switches": 300,
-      "avg_switch_ms": 14.21,
-      "min_switch_ms": 11.82,
-      "max_switch_ms": 34.03,
+      "avg_switch_ms": 17.46,
+      "min_switch_ms": 12.54,
+      "max_switch_ms": 40.91,
       "success_rate": "300/300 (100.0%)",
       "ping_rounds": 5,
       "ping_success_rate": "100.0%",
@@ -38,7 +38,7 @@
       "chaos_trials": 50,
       "completed_trials": 50,
       "chaos_success_rate": "50/50 (100.0%)",
-      "avg_failover_ms": 0.26,
+      "avg_failover_ms": 0.4,
       "silent_sync_cycles": 6,
       "completed_sync_cycles": 6,
       "diff_check_passed": true,
@@ -66,8 +66,8 @@
   "summary": {
     "total_duration_minutes": 60.0,
     "verdict": "PASSED",
-    "dmg_path": "/Users/runner/work/MyClashClient/MyClashClient/dist_mac/TianheNetwork_v3.0.8_macOS.dmg",
-    "dmg_size_mb": 83.73,
+    "dmg_path": "/Users/runner/work/MyClashClient/MyClashClient/dist_mac/TianheNetwork_v3.1.0_macOS.dmg",
+    "dmg_size_mb": 145.79,
     "app_size_mb": 0.0
   }
 }

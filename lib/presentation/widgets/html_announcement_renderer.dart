@@ -371,7 +371,7 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
     final text = raw.replaceAll(RegExp(r'<br\s*\/?>', caseSensitive: false), '\n');
 
     final tagRegex = RegExp(
-      r'(<a\s+[^>]*href=["\x27]([^"\x27]+)["\x27][^>]*>([\s\S]*?)<\/a>|<strong\s*([^>]*)>([\s\S]*?)<\/strong>|<b\s*([^>]*)>([\s\S]*?)<\/b>|<span\s*([^>]*)>([\s\S]*?)<\/span>)',
+      r'(<a\s+[^>]*href=["\x27]([^"\x27]+)["\x27][^>]*>([\s\S]*?)<\/a>|\[([^\]]+)\]\(((?:https?:\/\/|tg:\/\/)[^\s\)]+)\)|<strong\s*([^>]*)>([\s\S]*?)<\/strong>|<b\s*([^>]*)>([\s\S]*?)<\/b>|<span\s*([^>]*)>([\s\S]*?)<\/span>)',
       caseSensitive: false,
     );
 
@@ -392,8 +392,14 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
         final inner = match.group(3)!;
         final subSpans = _parseInlineData(inner);
         for (final s in subSpans) {
+          String linkText = s.text;
+          // 若標籤內部文字誤貼 Markdown 格式 [顯示名稱](網址) 或 [網址](網址)，提取清晰標題
+          final mdTextMatch = RegExp(r'^\[([\s\S]*?)\]\(([^\)]+)\)$').firstMatch(linkText.trim());
+          if (mdTextMatch != null) {
+            linkText = mdTextMatch.group(1)!.trim();
+          }
           spans.add(_InlineSpanData(
-            text: s.text,
+            text: linkText,
             isBold: s.isBold || inner.contains('<strong>') || inner.contains('<b>'),
             isItalic: s.isItalic,
             color: s.color,
@@ -401,10 +407,18 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
             linkUrl: href,
           ));
         }
+      } else if (match.group(4) != null && match.group(5) != null) {
+        // Markdown 語法原生支援：[顯示文字](網址)
+        final mdText = match.group(4)!;
+        final mdUrl = match.group(5)!;
+        spans.add(_InlineSpanData(
+          text: _unescapeHtml(mdText),
+          linkUrl: mdUrl,
+        ));
       } else if (fullMatch.toLowerCase().startsWith('<strong') || fullMatch.toLowerCase().startsWith('<b')) {
         // <strong> 或 <b>
-        final attrs = match.group(4) ?? match.group(6) ?? '';
-        final inner = match.group(5) ?? match.group(7) ?? '';
+        final attrs = match.group(6) ?? match.group(8) ?? '';
+        final inner = match.group(7) ?? match.group(9) ?? '';
         final style = _parseStyle(attrs);
 
         final subSpans = _parseInlineData(inner);
@@ -420,8 +434,8 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
         }
       } else if (fullMatch.toLowerCase().startsWith('<span')) {
         // <span>
-        final attrs = match.group(8) ?? '';
-        final inner = match.group(9) ?? '';
+        final attrs = match.group(10) ?? '';
+        final inner = match.group(11) ?? '';
         final style = _parseStyle(attrs);
 
         final subSpans = _parseInlineData(inner);
@@ -524,7 +538,8 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
         .replaceAll('&gt;', '>')
         .replaceAll('&amp;', '&')
         .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'");
+        .replaceAll('&#39;', "'")
+        .replaceAll(RegExp(r'\[cite:\s*\d+\]', caseSensitive: false), '');
   }
 }
 

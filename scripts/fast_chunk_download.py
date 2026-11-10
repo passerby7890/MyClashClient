@@ -15,12 +15,12 @@ HEADERS = {
     "Accept": "application/vnd.github+json"
 }
 
-API_URL = "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13605184469/zip"
+API_URL = "https://api.github.com/repos/passerby7890/MyClashClient/actions/artifacts/13681386089/zip"
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 DIST_MAC = PROJECT_ROOT / "dist_mac"
 DIST_MAC.mkdir(parents=True, exist_ok=True)
-OUT_ZIP = PROJECT_ROOT / "TianheNetwork_v3.1.0_macOS.zip"
+OUT_ZIP = PROJECT_ROOT / "TianheNetwork_v3.3.1_macOS.zip"
 
 session = requests.Session()
 session.trust_env = False

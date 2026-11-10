@@ -78,5 +78,37 @@ void main() {
     expect(find.textContaining('⚠️ 近期网络与订阅重要提示'), findsOneWidget);
     expect(find.textContaining('📥 全新客户端下载与更新'), findsOneWidget);
   });
+
+  testWidgets('HtmlAnnouncementRenderer sanitizes markdown bracket links and strips cite tags on Mac', (tester) async {
+    const dirtyHtml = '''
+<p>
+🌐 <strong>最新备用官网 / 下载入口：</strong><a href="[https://portal.thjs789.com](https://portal.thjs789.com)" target="_blank"><strong>[https://portal.thjs789.com](https://portal.thjs789.com)</strong></a><br>
+<a href="[https://t.me/THJSQBOT](https://t.me/THJSQBOT)" target="_blank">👉 点击私聊 (@THJSQBOT)</a><br>
+买三年低至 41 折[cite: 1]！
+[备用备援链接](https://portal.thjs789.com)
+</p>
+''';
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: HtmlAnnouncementRenderer(html: dirtyHtml),
+          ),
+        ),
+      ),
+    );
+
+    // Verify markdown brackets are cleaned from the inner text:
+    expect(find.textContaining('https://portal.thjs789.com'), findsWidgets);
+    expect(find.textContaining('[https://portal.thjs789.com](https://portal.thjs789.com)'), findsNothing);
+
+    // Verify AI citation is stripped
+    expect(find.textContaining('[cite: 1]'), findsNothing);
+    expect(find.textContaining('买三年低至 41 折！'), findsOneWidget);
+
+    // Verify raw markdown links are rendered
+    expect(find.textContaining('备用备援链接'), findsOneWidget);
+  });
 }
 

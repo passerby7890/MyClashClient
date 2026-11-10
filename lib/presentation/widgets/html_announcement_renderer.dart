@@ -8,47 +8,66 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart' as ul;
 
-/// 跨平台安全原生 URL 開啟器 (具備協定白名單與雙重備援)
+/// 跨平台安全原生 URL 開啟器 (具備協定白名單、Markdown 容錯與系統原生跳轉)
 class NativeUrlOpener {
   static const List<String> _allowedSchemes = ['https://', 'http://', 'tg://'];
 
   static Future<bool> open(String url) async {
-    final trimmed = url.trim();
-    final isAllowed = _allowedSchemes.any(
-      (scheme) => trimmed.toLowerCase().startsWith(scheme),
-    );
-    if (!isAllowed) return false;
+    String cleanUrl = url.trim();
 
-    // 優先使用已內建之 url_launcher
+    // 若誤貼 markdown 語法 [xxx](https://...)，提取括弧內的真實網址
+    final mdMatch = RegExp(r'\((https?:\/\/[^\s\)]+|tg:\/\/[^\s\)]+)\)').firstMatch(cleanUrl);
+    if (mdMatch != null && mdMatch.group(1) != null) {
+      cleanUrl = mdMatch.group(1)!;
+    } else {
+      // 剝除可能的外圍中括號或引號
+      cleanUrl = cleanUrl.replaceAll(RegExp(r'^[\[\("]+|[\]\)"\s]+$'), '').trim();
+    }
+
+    final isAllowed = _allowedSchemes.any(
+      (scheme) => cleanUrl.toLowerCase().startsWith(scheme),
+    );
+    if (!isAllowed) {
+      debugPrint('NativeUrlOpener rejected disallowed URL: $url (cleaned: $cleanUrl)');
+      return false;
+    }
+
+    debugPrint('NativeUrlOpener opening: $cleanUrl');
+
+    // 1. macOS 端：優先使用原生 open 命令
+    if (Platform.isMacOS) {
+      try {
+        await Process.run('open', [cleanUrl]);
+        return true;
+      } catch (e) {
+        debugPrint('macOS Process.run open failed: $e');
+      }
+    }
+
+    // 2. Windows 端：原生 cmd /c start
+    if (Platform.isWindows) {
+      try {
+        await Process.run('cmd', ['/c', 'start', '', cleanUrl], runInShell: true);
+        return true;
+      } catch (e) {
+        debugPrint('Windows Process.run cmd start failed: $e');
+      }
+    }
+
+    // 3. 次選使用 url_launcher
     try {
-      final uri = Uri.tryParse(trimmed);
-      if (uri != null && await ul.canLaunchUrl(uri)) {
+      final uri = Uri.tryParse(cleanUrl);
+      if (uri != null) {
         final success = await ul.launchUrl(
           uri,
           mode: ul.LaunchMode.externalApplication,
         );
         if (success) return true;
       }
-    } catch (_) {}
-
-    // 作業系統原生底層指令備援
-    try {
-      if (Platform.isWindows) {
-        await Process.run('cmd', ['/c', 'start', '', trimmed], runInShell: true);
-        return true;
-      } else if (Platform.isMacOS) {
-        await Process.run('open', [trimmed]);
-        return true;
-      } else if (Platform.isLinux) {
-        await Process.run('xdg-open', [trimmed]);
-        return true;
-      } else if (Platform.isAndroid) {
-        await Process.run('am', ['start', '-a', 'android.intent.action.VIEW', '-d', trimmed]);
-        return true;
-      }
     } catch (e) {
-      debugPrint('NativeUrlOpener fallback error: $e');
+      debugPrint('url_launcher failed: $e');
     }
+
     return false;
   }
 }
@@ -190,7 +209,7 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
                 bottom: block.type.startsWith('h') ? 10 : 8,
                 top: block.type.startsWith('h') && i > 0 ? 6 : 0,
               ),
-              child: SelectableText.rich(
+              child: Text.rich(
                 TextSpan(children: spans),
                 style: widget.defaultTextStyle ??
                     const TextStyle(
@@ -205,10 +224,12 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
         }
       }
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: widgets,
+      return SelectionArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: widgets,
+        ),
       );
     } catch (e) {
       debugPrint('HtmlAnnouncementRenderer fallback: $e');
@@ -328,6 +349,7 @@ class _HtmlAnnouncementRendererState extends State<HtmlAnnouncementRenderer> {
         TextSpan(
           text: d.text,
           recognizer: recognizer,
+          mouseCursor: link != null ? SystemMouseCursors.click : MouseCursor.defer,
           style: TextStyle(
             fontSize: d.fontSize ?? defaultSize,
             fontWeight: weight,

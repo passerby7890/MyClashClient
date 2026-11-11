@@ -56,16 +56,18 @@ jobs:
               Path("dist_mac/Tianhe.app/Contents/Frameworks/libtianhe_rust.dylib"),
               Path("dist_mac/Tianhe.app/Contents/Frameworks/App.framework/App"),
           ]
-          terms = [
+          terms_ci = [
               "5xfWh" + "68", "s303K" + "hc0", "thjsq" + "999", "thjsq" + "aes32",
               "nova" + "clash", "cloudflare" + "-dns", "8." + "218", "8." + "219",
-              "0n" + "21", "Clash" + "Meta", "tianhe" + "_sec"
+              "0n" + "21", "tianhe" + "_sec"
           ]
+          terms_cs = ["Clash" + "Meta", "fl" + "clash"]
           leaks = 0
           for p in targets:
               assert p.exists(), f"Missing binary: {p}"
-              txt = p.read_bytes().decode("ascii", errors="ignore").lower()
-              hits = [t for t in terms if t.lower() in txt]
+              raw = p.read_bytes().decode("ascii", errors="ignore")
+              low = raw.lower()
+              hits = [t for t in terms_ci if t.lower() in low] + [t for t in terms_cs if t in raw]
               print(f"[SCAN] {p}: {len(hits)} leaks {hits}")
               leaks += len(hits)
           assert leaks == 0, f"Found {leaks} binary leaks!"

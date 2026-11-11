@@ -95,6 +95,41 @@ rules:
       } finally {
         if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
       }
+
+      // 額外驗證 3b：全節點池 L0 生成與動態 select 策略組讀取
+      final poolPath = '${Directory.systemTemp.createTempSync('tianhe_mac_pool_test_').path}${Platform.pathSeparator}config.yaml';
+      try {
+        final poolOk = await TianheRustBridge.instance.prepareL0Config(
+          nodeId: 1,
+          routingMode: 'rule',
+          outputPath: poolPath,
+          secret: 'pool_test_secret',
+          fullPool: true,
+        );
+        expect(poolOk, isTrue);
+
+        final poolYaml = File(poolPath).readAsStringSync();
+        expect(poolYaml, contains('198.51.100.42'));
+        expect(poolYaml, contains('203.0.113.88'));
+        expect(poolYaml, contains('geodata-loader: memconservative'));
+        expect(poolYaml, contains('tun:\n  enable: false'));
+        final groupsIdx = poolYaml.indexOf('proxy-groups:');
+        final afterGroups = poolYaml.substring(groupsIdx);
+        expect(
+          afterGroups.indexOf('🇯🇵 日本 02 | Trojan'),
+          lessThan(afterGroups.indexOf('🇸🇬 新加坡 01 | VLESS')),
+        );
+
+        final groups = await TianheRustBridge.instance.getSelectGroupNames();
+        expect(groups, containsAll(['天河網絡', 'PROXY', 'GLOBAL']));
+
+        final shreddedPool = await TianheRustBridge.instance.shredFile(poolPath);
+        expect(shreddedPool, isTrue);
+        expect(File(poolPath).existsSync(), isFalse);
+      } finally {
+        final parent = File(poolPath).parent;
+        if (parent.existsSync()) parent.deleteSync(recursive: true);
+      }
     });
 
     test('4. 【強制修正 2 & 5】Tokio 50路並發測速 (無IP參數洩漏 + Isolate.run 執行)', () async {

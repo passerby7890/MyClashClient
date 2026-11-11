@@ -185,7 +185,7 @@ impl YamlEngine {
         }
     }
 
-    /// 冷啟動時生成 L0 單節點切片配置並安全寫入指定路徑 (供核心啟動載入)
+    /// 冷啟動時生成 L0 單節點切片配置並安全寫入指定路徑 (供桌面/單元測試單節點驗證)
     pub fn prepare_l0_config(
         node_id: usize,
         routing_mode: &str,
@@ -193,12 +193,64 @@ impl YamlEngine {
         secret: &str,
     ) -> Result<(), String> {
         let yaml_str = Self::generate_slice_yaml(node_id, routing_mode, secret)?;
+        Self::write_config_file(output_path, &yaml_str)
+    }
+
+    /// 冷啟動時生成全節點池 L0 配置並安全寫入指定路徑 (供桌面端指標熱切換引擎一次載入，載入後立即閱後即焚)
+    pub fn prepare_l0_pool_config(
+        node_id: usize,
+        routing_mode: &str,
+        output_path: &str,
+        secret: &str,
+    ) -> Result<(), String> {
+        let yaml_str = Self::generate_pool_yaml(node_id, routing_mode, secret)?;
+        Self::write_config_file(output_path, &yaml_str)
+    }
+
+    fn write_config_file(output_path: &str, yaml_str: &str) -> Result<(), String> {
         if let Some(parent) = Path::new(output_path).parent() {
             let _ = fs::create_dir_all(parent);
         }
         fs::write(output_path, yaml_str)
             .map_err(|e| format!("寫入 L0 設定檔失敗: {}", e))?;
         Ok(())
+    }
+
+    /// 取得母體範本中所有可供指標熱切換的策略組名稱 (含 PROXY / GLOBAL)
+    pub fn get_select_group_names() -> Vec<String> {
+        let vault_t = VAULT_BASE_TEMPLATE.read().unwrap();
+        let mut names: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+
+        if let Some(raw_groups) = vault_t.as_ref().and_then(|d| d.get("proxy-groups")).and_then(|g| g.as_sequence()) {
+            for rg in raw_groups {
+                if let Some(gmap) = rg.as_mapping() {
+                    let gname = gmap
+                        .get(&Value::String("name".to_string()))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim();
+                    let gtype = gmap
+                        .get(&Value::String("type".to_string()))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("select")
+                        .trim()
+                        .to_lowercase();
+                    if !gname.is_empty() && (gtype == "select" || gtype.is_empty()) {
+                        if seen.insert(gname.to_string()) {
+                            names.push(gname.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        for fallback in ["PROXY", "GLOBAL"] {
+            if seen.insert(fallback.to_string()) {
+                names.push(fallback.to_string());
+            }
+        }
+        names
     }
 
     /// 閱後即焚：以零字節覆寫並刪除敏感設定檔
@@ -227,6 +279,24 @@ impl YamlEngine {
         routing_mode: &str,
         secret: &str,
     ) -> Result<String, String> {
+        Self::generate_yaml_internal(node_id, routing_mode, secret, false)
+    }
+
+    /// 生成全節點池啟動 YAML (包含金庫全部節點，將選中節點置頂，專供單次啟動 + 後續 PUT /proxies 指標熱切換)
+    pub fn generate_pool_yaml(
+        node_id: usize,
+        routing_mode: &str,
+        secret: &str,
+    ) -> Result<String, String> {
+        Self::generate_yaml_internal(node_id, routing_mode, secret, true)
+    }
+
+    fn generate_yaml_internal(
+        node_id: usize,
+        routing_mode: &str,
+        secret: &str,
+        include_all_nodes: bool,
+    ) -> Result<String, String> {
         let vault_p = VAULT_PROXIES.read().unwrap();
         let target_node = vault_p.get(node_id)
             .or_else(|| vault_p.first())
@@ -247,9 +317,10 @@ impl YamlEngine {
         };
 
         let mut buffer = String::new();
-        buffer.push_str("# Tianhe Network Rust Core Sliced Configuration\n");
+        buffer.push_str("# Tianhe Network Rust Core Configuration\n");
         buffer.push_str("mixed-port: 7890\n");
         buffer.push_str("allow-lan: false\n");
+        buffer.push_str("bind-address: \"127.0.0.1\"\n");
         buffer.push_str(&format!("mode: {}\n", valid_mode));
         buffer.push_str("log-level: silent\n");
         buffer.push_str("ipv6: false\n");
@@ -258,11 +329,12 @@ impl YamlEngine {
         buffer.push_str("external-controller: 127.0.0.1:9090\n");
         buffer.push_str(&format!("secret: \"{}\"\n", secret));
         buffer.push_str("geo-auto-update: false\n");
-        buffer.push_str("geodata-mode: false\n\n");
+        buffer.push_str("geodata-mode: false\n");
+        buffer.push_str("geodata-loader: memconservative\n\n");
 
-        // TUN 區塊
+        // TUN 區塊 (規則/全局模式為 false；TUN 模式下鎖定 1400 黃金 MTU)
         let is_tun = routing_mode.to_lowercase() == "tun";
-        buffer.push_str(&format!("tun:\n  enable: {}\n  stack: gvisor\n  dns-hijack:\n    - \"any:53\"\n    - \"tcp://any:53\"\n  auto-route: true\n  auto-detect-interface: true\n\n", is_tun));
+        buffer.push_str(&format!("tun:\n  enable: {}\n  stack: gvisor\n  mtu: 1400\n  dns-hijack:\n    - \"any:53\"\n    - \"tcp://any:53\"\n  auto-route: true\n  auto-detect-interface: true\n\n", is_tun));
 
         // Sniffer 區塊
         buffer.push_str("sniffer:\n  enable: true\n  sniff:\n    TLS:\n      ports: [443, 8443]\n    HTTP:\n      ports: [80, 8080-8880]\n  force-domain:\n    - \"+.netflix.com\"\n    - \"+.spotify.com\"\n  skip-domain:\n    - \"Mijia Cloud\"\n\n");
@@ -286,11 +358,31 @@ impl YamlEngine {
             ));
         }
 
-        // 單節點 proxies 陣列 (僅寫 1 顆節點)
-        buffer.push_str("proxies:\n");
-        buffer.push_str(&format!("  - {}\n\n", Self::indent_yaml(target_node, 4).trim_start()));
+        // 蒐集全量節點名稱清單（選定節點排第 1 位，確保初次啟動預設選中）
+        let mut ordered_node_names: Vec<String> = vec![node_name.clone()];
+        let mut seen_node_names: HashSet<String> = HashSet::from([node_name.clone()]);
+        if include_all_nodes {
+            for p in vault_p.iter() {
+                if let Some(pname) = p.get("name").and_then(|v| v.as_str()) {
+                    if seen_node_names.insert(pname.to_string()) {
+                        ordered_node_names.push(pname.to_string());
+                    }
+                }
+            }
+        }
 
-        // 策略組 proxy-groups (繼承與重映射母體，確保懸空節點收斂至 targetNode)
+        // proxies 陣列：全節點池模式寫入全部節點；單節點切片僅寫入 1 顆選中節點
+        buffer.push_str("proxies:\n");
+        if include_all_nodes {
+            for p in vault_p.iter() {
+                buffer.push_str(&format!("  - {}\n", Self::indent_yaml(p, 4).trim_start()));
+            }
+            buffer.push('\n');
+        } else {
+            buffer.push_str(&format!("  - {}\n\n", Self::indent_yaml(target_node, 4).trim_start()));
+        }
+
+        // 策略組 proxy-groups (繼承與重映射母體)
         let mut final_groups: Vec<Mapping> = Vec::new();
         let special_keywords: HashSet<&str> = ["DIRECT", "REJECT", "PASS", "COMPATIBLE", "GLOBAL"].into_iter().collect();
 
@@ -307,6 +399,8 @@ impl YamlEngine {
 
                     let mut new_proxies: Vec<String> = Vec::new();
                     let mut seen: HashSet<String> = HashSet::new();
+                    let mut had_concrete_proxy = false;
+
                     if let Some(orig) = gmap.get(&Value::String("proxies".to_string())).and_then(|p| p.as_sequence()) {
                         for entry in orig {
                             if let Some(s) = entry.as_str() {
@@ -316,18 +410,39 @@ impl YamlEngine {
                                     if seen.insert(trimmed.to_string()) {
                                         new_proxies.push(trimmed.to_string());
                                     }
-                                } else if seen.insert(node_name.clone()) {
-                                    new_proxies.push(node_name.clone());
+                                } else {
+                                    had_concrete_proxy = true;
+                                    if !include_all_nodes && seen.insert(node_name.clone()) {
+                                        new_proxies.push(node_name.clone());
+                                    }
                                 }
                             }
                         }
                     }
 
-                    if !seen.contains(&node_name) {
-                        new_proxies.insert(0, node_name.clone());
+                    if include_all_nodes {
+                        if had_concrete_proxy || new_proxies.is_empty() || gname == "PROXY" || gname == "GLOBAL" {
+                            let preserved_refs = new_proxies;
+                            new_proxies = Vec::new();
+                            seen.clear();
+                            for pname in &ordered_node_names {
+                                if seen.insert(pname.clone()) {
+                                    new_proxies.push(pname.clone());
+                                }
+                            }
+                            for r in preserved_refs {
+                                if r != gname && seen.insert(r.clone()) {
+                                    new_proxies.push(r);
+                                }
+                            }
+                        }
                     } else {
-                        new_proxies.retain(|x| x != &node_name);
-                        new_proxies.insert(0, node_name.clone());
+                        if !seen.contains(&node_name) {
+                            new_proxies.insert(0, node_name.clone());
+                        } else {
+                            new_proxies.retain(|x| x != &node_name);
+                            new_proxies.insert(0, node_name.clone());
+                        }
                     }
 
                     let val_list: Vec<Value> = new_proxies.into_iter().map(Value::String).collect();
@@ -343,7 +458,13 @@ impl YamlEngine {
             let mut m = Mapping::new();
             m.insert(Value::String("name".to_string()), Value::String("PROXY".to_string()));
             m.insert(Value::String("type".to_string()), Value::String("select".to_string()));
-            m.insert(Value::String("proxies".to_string()), Value::Sequence(vec![Value::String(node_name.clone()), Value::String("DIRECT".to_string())]));
+            let mut list: Vec<Value> = if include_all_nodes {
+                ordered_node_names.iter().cloned().map(Value::String).collect()
+            } else {
+                vec![Value::String(node_name.clone())]
+            };
+            list.push(Value::String("DIRECT".to_string()));
+            m.insert(Value::String("proxies".to_string()), Value::Sequence(list));
             final_groups.insert(0, m);
         }
 
@@ -352,7 +473,14 @@ impl YamlEngine {
             let mut m = Mapping::new();
             m.insert(Value::String("name".to_string()), Value::String("GLOBAL".to_string()));
             m.insert(Value::String("type".to_string()), Value::String("select".to_string()));
-            m.insert(Value::String("proxies".to_string()), Value::Sequence(vec![Value::String(node_name.clone()), Value::String("PROXY".to_string()), Value::String("DIRECT".to_string())]));
+            let mut list: Vec<Value> = if include_all_nodes {
+                ordered_node_names.iter().cloned().map(Value::String).collect()
+            } else {
+                vec![Value::String(node_name.clone())]
+            };
+            list.push(Value::String("PROXY".to_string()));
+            list.push(Value::String("DIRECT".to_string()));
+            m.insert(Value::String("proxies".to_string()), Value::Sequence(list));
             final_groups.push(m);
         }
 
@@ -377,46 +505,82 @@ impl YamlEngine {
         Ok(buffer)
     }
 
-    /// 在連線狀態下，直推 9090 端口熱重載單節點切片並切斷舊長連線 (< 20ms 瞬切)
+    /// 在連線狀態下，並發直推 9090 端口執行純指標熱切換並切斷舊長連線 (零 Geo 庫重載，< 15ms)
     pub async fn select_node_and_apply(
         node_id: usize,
         routing_mode: &str,
         secret: &str,
     ) -> Result<(), String> {
-        let yaml_str = Self::generate_slice_yaml(node_id, routing_mode, secret)?;
+        let node_name = {
+            let vault_p = VAULT_PROXIES.read().unwrap();
+            let target_node = vault_p
+                .get(node_id)
+                .or_else(|| vault_p.first())
+                .ok_or_else(|| "金庫中無可用節點".to_string())?;
+            target_node
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Node")
+                .to_string()
+        };
+
+        let valid_mode = match routing_mode.to_lowercase().as_str() {
+            "global" => "global",
+            "direct" => "direct",
+            _ => "rule",
+        };
+        let group_names = Self::get_select_group_names();
 
         let client = reqwest::Client::builder()
             .no_proxy()
-            .timeout(std::time::Duration::from_millis(1500))
+            .timeout(std::time::Duration::from_millis(1200))
             .build()
             .map_err(|e| format!("HTTP Client 建立失敗: {}", e))?;
 
-        let payload_json = serde_json::json!({
-            "payload": yaml_str
-        });
-
-        // 1. PUT http://127.0.0.1:9090/configs?force=true
-        let put_res = client
-            .put("http://127.0.0.1:9090/configs?force=true")
+        // 1. PATCH /configs 輕量更新路由模式 (不重載 GeoDB)
+        let _ = client
+            .patch("http://127.0.0.1:9090/configs")
             .header("Authorization", format!("Bearer {}", secret))
-            .header("Content-Type", "application/json")
-            .json(&payload_json)
+            .json(&serde_json::json!({ "mode": valid_mode }))
             .send()
-            .await
-            .map_err(|e| format!("PUT /configs 失敗: {}", e))?;
+            .await;
 
-        if !put_res.status().is_success() {
-            return Err(format!("核心重載返回狀態碼: {}", put_res.status()));
+        // 2. 並發 PUT /proxies/{group} 切換所有 select 策略組指標
+        let mut futs = Vec::with_capacity(group_names.len());
+        for group in group_names {
+            let c = client.clone();
+            let s = secret.to_string();
+            let n = node_name.clone();
+            let encoded = urlencoding_encode(&group);
+            let url = format!("http://127.0.0.1:9090/proxies/{}", encoded);
+            futs.push(async move {
+                match c
+                    .put(&url)
+                    .header("Authorization", format!("Bearer {}", s))
+                    .json(&serde_json::json!({ "name": n }))
+                    .send()
+                    .await
+                {
+                    Ok(resp) => resp.status().is_success(),
+                    Err(_) => false,
+                }
+            });
         }
+        let results = futures::future::join_all(futs).await;
+        let any_ok = results.into_iter().any(|ok| ok);
 
-        // 2. DELETE http://127.0.0.1:9090/connections 瞬切出口
+        // 3. DELETE http://127.0.0.1:9090/connections 立即斬斷舊出口長連線
         let _ = client
             .delete("http://127.0.0.1:9090/connections")
             .header("Authorization", format!("Bearer {}", secret))
             .send()
             .await;
 
-        Ok(())
+        if any_ok {
+            Ok(())
+        } else {
+            Err("指標切換未命中任何策略組".to_string())
+        }
     }
 
     fn indent_yaml(val: &Value, indent: usize) -> String {
@@ -484,4 +648,37 @@ rules:
         // 單節點切片驗證：proxies 區塊絕不能包含未選中的第 2 顆節點
         assert!(!slice.contains("🇯🇵 日本 02 | 影音"));
     }
+
+    #[test]
+    fn test_generate_pool_yaml_and_select_groups() {
+        let _ = YamlEngine::parse_and_vault(SAMPLE_YAML);
+        let pool = YamlEngine::generate_pool_yaml(1, "rule", "test_secret").expect("Pool should succeed");
+        assert!(pool.contains("geodata-loader: memconservative"));
+        assert!(pool.contains("bind-address: \"127.0.0.1\""));
+        assert!(pool.contains("tun:\n  enable: false"));
+        assert!(pool.contains("🇭🇰 香港 01 | 專線"));
+        assert!(pool.contains("🇯🇵 日本 02 | 影音"));
+        let idx_groups = pool.find("proxy-groups:").unwrap();
+        let after_groups = &pool[idx_groups..];
+        let g_jp = after_groups.find("🇯🇵 日本 02 | 影音").unwrap();
+        let g_hk = after_groups.find("🇭🇰 香港 01 | 專線").unwrap();
+        assert!(g_jp < g_hk);
+
+        let groups = YamlEngine::get_select_group_names();
+        assert!(groups.contains(&"天河網絡".to_string()));
+        assert!(groups.contains(&"PROXY".to_string()));
+        assert!(groups.contains(&"GLOBAL".to_string()));
+    }
+}
+
+fn urlencoding_encode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for b in input.as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(*b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
 }

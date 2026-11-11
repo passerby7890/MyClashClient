@@ -108,6 +108,7 @@ class CoreDaemon extends ChangeNotifier {
         final res = await req.close();
         await res.drain();
         client.close();
+        await closeAllConnections();
         SafeLog.d('[CoreDaemon] 已熱切換分流模式為: $modeStr');
       } catch (_) {
         SafeLog.d('[CoreDaemon] 熱切換分流模式略過');
@@ -189,14 +190,20 @@ class CoreDaemon extends ChangeNotifier {
     }
   }
 
-  /// 快速切換連線節點 (毫秒級極速合併熱切換)
-  Future<void> switchNode(String nodeName, {String? configPath, String? yamlPayload}) async {
+  /// 快速切換連線節點 (毫秒級極速合併熱切換，純指標秒切)
+  Future<void> switchNode(
+    String nodeName, {
+    List<String>? groupNames,
+    String? configPath,
+    String? yamlPayload,
+  }) async {
     if (!_state.isConnected) return;
     _setState(CoreState.connected(nodeName: nodeName));
 
     if (!kIsWeb && (Platform.isMacOS || Platform.isWindows) && MacosNativeProxy.instance.isCoreRunning) {
       await MacosNativeProxy.instance.switchProxyWithPayload(
         nodeName: nodeName,
+        groupNames: groupNames,
         yamlPayload: yamlPayload,
         configPath: configPath,
       );
@@ -208,9 +215,15 @@ class CoreDaemon extends ChangeNotifier {
       client.findProxy = (uri) => 'DIRECT';
       final encodedNode = jsonEncode({'name': nodeName});
 
-      for (final group in ['PROXY', 'GLOBAL']) {
+      final targetGroups = <String>{'PROXY', 'GLOBAL'};
+      if (groupNames != null) {
+        targetGroups.addAll(groupNames);
+      }
+
+      for (final group in targetGroups) {
         try {
-          final request = await client.putUrl(Uri.parse('http://127.0.0.1:9090/proxies/$group'));
+          final encodedGroup = Uri.encodeComponent(group);
+          final request = await client.putUrl(Uri.parse('http://127.0.0.1:9090/proxies/$encodedGroup'));
           request.headers.contentType = ContentType.json;
           if (_controllerSecret.isNotEmpty) {
             request.headers.set('Authorization', 'Bearer $_controllerSecret');
@@ -221,30 +234,32 @@ class CoreDaemon extends ChangeNotifier {
         } catch (_) {}
       }
 
-      try {
-        final deleteReq = await client.deleteUrl(Uri.parse('http://127.0.0.1:9090/connections'));
-        if (_controllerSecret.isNotEmpty) {
-          deleteReq.headers.set('Authorization', 'Bearer $_controllerSecret');
-        }
-        final deleteRes = await deleteReq.close();
-        await deleteRes.drain();
-      } catch (_) {}
-
-      if (configPath != null && configPath.isNotEmpty) {
-        try {
-          final cfgReq = await client.putUrl(Uri.parse('http://127.0.0.1:9090/configs?force=true'));
-          cfgReq.headers.contentType = ContentType.json;
-          if (_controllerSecret.isNotEmpty) {
-            cfgReq.headers.set('Authorization', 'Bearer $_controllerSecret');
-          }
-          cfgReq.write(jsonEncode({'path': configPath}));
-          final cfgRes = await cfgReq.close();
-          await cfgRes.drain();
-        } catch (_) {}
-      }
-
+      await closeAllConnections();
       client.close();
     } catch (_) {}
+  }
+
+  /// 無損分流模式切換 (Rule / Global / Direct) - 輕量 PATCH /configs，0 Geo 庫重載
+  Future<void> setRoutingMode(String mode) async {
+    final lower = mode.toLowerCase();
+    if (!['rule', 'global', 'direct', 'tun'].contains(lower)) return;
+    final targetMode = lower == 'tun' ? 'rule' : lower;
+    try {
+      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 600);
+      client.findProxy = (uri) => 'DIRECT';
+      final req = await client.patchUrl(Uri.parse('http://127.0.0.1:9090/configs'));
+      req.headers.contentType = ContentType.json;
+      if (_controllerSecret.isNotEmpty) {
+        req.headers.set('Authorization', 'Bearer $_controllerSecret');
+      }
+      req.write(jsonEncode({'mode': targetMode}));
+      final res = await req.close();
+      await res.drain();
+      client.close();
+    } catch (_) {}
+    await closeAllConnections();
+    _proxyMode = ProxyModeRoutingExt.fromRoutingString(lower);
+    _setState(_state.copyWith(proxyMode: _proxyMode));
   }
 
   /// Rust 底層直接切換核心節點後，同步更新 Dart UI 核心狀態標籤

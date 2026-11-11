@@ -306,20 +306,22 @@ class TianheRustBridge {
     }
   }
 
-  /// 6. [YamlEngine] 冷啟動準備 L0 單節點切片設定檔至私密路徑 (Mandatory Fix 4)
+  /// 6. [YamlEngine] 冷啟動準備 L0 設定檔至私密路徑 (支援 fullPool 全節點池與 single slice 雙模式)
   Future<bool> prepareL0Config({
     required int nodeId,
     required String routingMode,
     required String outputPath,
     required String secret,
+    bool fullPool = false,
   }) async {
     if (!init()) return false;
     final libPath = _resolvedLibPath!;
+    final symbolName = fullPool ? 'tianhe_prepare_l0_pool_config' : 'tianhe_prepare_l0_config';
 
     try {
       return await Isolate.run(() {
         final lib = DynamicLibrary.open(libPath);
-        final fn = lib.lookupFunction<_TianhePrepareL0C, _TianhePrepareL0Dart>('tianhe_prepare_l0_config');
+        final fn = lib.lookupFunction<_TianhePrepareL0C, _TianhePrepareL0Dart>(symbolName);
         final modePtr = routingMode.toNativeUtf8();
         final pathPtr = outputPath.toNativeUtf8();
         final secretPtr = secret.toNativeUtf8();
@@ -334,6 +336,27 @@ class TianheRustBridge {
     } catch (_) {
       return false;
     }
+  }
+
+  /// 6b. [YamlEngine] 取得母體範本中所有可供指標熱切換的 select 策略組名稱
+  Future<List<String>> getSelectGroupNames() async {
+    if (!init()) return const ['PROXY', 'GLOBAL'];
+    final libPath = _resolvedLibPath!;
+
+    try {
+      final rawJson = await Isolate.run(() {
+        final lib = DynamicLibrary.open(libPath);
+        final fn = lib.lookupFunction<_TianheNoArgToStrC, _TianheNoArgToStrDart>('tianhe_get_select_groups');
+        final resPtr = fn();
+        return _readAndFreeRustString(lib, resPtr);
+      });
+
+      final decoded = json.decode(rawJson) as Map<String, dynamic>;
+      if (decoded['ok'] == true && decoded['data'] is List) {
+        return (decoded['data'] as List).map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+      }
+    } catch (_) {}
+    return const ['PROXY', 'GLOBAL'];
   }
 
   /// 7. [YamlEngine] 閱後即焚：覆寫歸零並刪除臨時設定檔

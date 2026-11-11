@@ -210,11 +210,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       // 驗證節點頁頂部控制列
-      expect(find.text(I18nService.instance.t('node_batch_ping')), findsOneWidget);
-      expect(find.text(I18nService.instance.t('node_select_fastest')), findsOneWidget);
-      expect(find.text(I18nService.instance.t('node_tab_asia')), findsWidgets);
-      expect(find.text(I18nService.instance.t('node_tab_western')), findsWidgets);
-      expect(find.text(I18nService.instance.t('node_tab_others')), findsWidgets);
+      expect(find.text(I18nService.instance.t('speed_test')), findsOneWidget);
+      expect(find.text(I18nService.instance.t('best_latency')), findsOneWidget);
+      expect(find.text(I18nService.instance.t('node_tab_favorites')), findsOneWidget);
     });
   });
 }

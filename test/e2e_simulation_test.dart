@@ -104,8 +104,8 @@ void main() {
               );
             }
 
-            // 2. 其餘端點均需檢驗 Token (非公開端點若無 Authorization 則模擬後端 401)
-            if (authHeader == null || authHeader.isEmpty) {
+            // 2. 其餘端點均需檢驗 Token (訂閱端點使用 ?token=... 而非 JWT header)
+            if (!path.contains('/api/v1/client/subscribe') && (authHeader == null || authHeader.isEmpty)) {
               return handler.reject(
                 DioException(
                   requestOptions: options,
@@ -134,6 +134,22 @@ void main() {
                       'plan_id': 3,
                       'balance': 5000,
                       'commission_balance': 12000,
+                      'token': 'sub_token_xyz987',
+                    }
+                  },
+                ),
+              );
+            }
+
+            // 3b. 獲取訂閱連結端點
+            if (path.contains('/api/v1/user/getSubscribe')) {
+              return handler.resolve(
+                Response(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: {
+                    'data': {
+                      'subscribe_url': '/api/v1/client/subscribe?token=sub_token_xyz987',
                       'token': 'sub_token_xyz987',
                     }
                   },

@@ -1,5 +1,6 @@
 // test/subscription_test.dart
 
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flclash_v2board_client/core/constants/app_constants.dart';
 import 'package:flclash_v2board_client/business/subscription/node_model.dart';
@@ -186,7 +187,8 @@ proxies:
 
       // 1. 驗證 DioClient 預設 User-Agent 徹底去除第三方特徵，對齊 AppConstants.appVersion
       final defaultUa = dioClient.dio.options.headers['User-Agent'] as String?;
-      expect(defaultUa, equals('TianheNetwork/${AppConstants.appVersion} (macOS)'));
+      final expectedPlatform = Platform.isMacOS ? 'macOS' : (Platform.isWindows ? 'Windows' : 'Android');
+      expect(defaultUa, equals('TianheNetwork/${AppConstants.appVersion} ($expectedPlatform)'));
       expect(defaultUa, isNot(contains('Clash')));
       expect(defaultUa, isNot(contains('Meta')));
 

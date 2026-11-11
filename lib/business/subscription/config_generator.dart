@@ -129,6 +129,7 @@ class ConfigGenerator {
     buffer.writeln('# Tianhe Network Routing Configuration (Dynamic Template Merged)');
     buffer.writeln('mixed-port: $mixedPort');
     buffer.writeln('allow-lan: false');
+    buffer.writeln('bind-address: "127.0.0.1"');
     buffer.writeln('mode: $validMode');
     buffer.writeln('log-level: silent'); // 零明文原則：核心日誌靜音
     buffer.writeln('ipv6: false');
@@ -139,6 +140,7 @@ class ConfigGenerator {
     buffer.writeln('secret: "$effectiveSecret"');
     buffer.writeln('geo-auto-update: false'); // 防 GitHub 連線更新卡死
     buffer.writeln('geodata-mode: false');
+    buffer.writeln('geodata-loader: memconservative');
     buffer.writeln();
 
     // 4. TUN 虛擬網卡配置 (僅於 TUN 模式時啟用，避免 Windows 規則/全域模式因無管理員或缺 wintun.dll 崩潰)
@@ -146,6 +148,7 @@ class ConfigGenerator {
     buffer.writeln('tun:');
     buffer.writeln('  enable: $isTun');
     buffer.writeln('  stack: gvisor');
+    buffer.writeln('  mtu: 1400');
     buffer.writeln('  dns-hijack:');
     buffer.writeln('    - "any:53"');
     buffer.writeln('    - "tcp://any:53"');

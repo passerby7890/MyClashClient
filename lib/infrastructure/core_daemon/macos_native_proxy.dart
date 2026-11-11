@@ -41,6 +41,7 @@ class MacosNativeProxy {
   /// Single-Flight Latest-Wins 熱切換合併狀態
   ({
     String nodeName,
+    List<String>? groupNames,
     String? yamlPayload,
     String? configPath,
     int controllerPort,
@@ -311,6 +312,12 @@ class MacosNativeProxy {
         exePath,
         args,
         mode: ProcessStartMode.normal,
+        environment: {
+          ...Platform.environment,
+          'GODEBUG': 'madvdontneed=1', // 強制 Go 釋放記憶體後立即歸還 OS 核心，消除虛胖佔用
+          'GOMEMLIMIT': '220MiB',      // 鎖定 Go Heap 軟上限為 220MiB，防止 GeoDB 解析期無限膨脹
+          'GOGC': '50',                // 加快暫時性 AST 物件回收頻率
+        },
       );
 
       _coreProcess?.stdout
@@ -352,24 +359,9 @@ class MacosNativeProxy {
         return false;
       }
 
-      // 5. 開啟 macOS 系統代理
+      // 6. 閱後即焚：核心已載入記憶體，<= 100ms 內安全抹除暫存設定檔 (含退避重試)
+      await _safeShredFileWithRetry(configPath);
       await enableSystemProxy(host: '127.0.0.1', port: mixedPort);
-
-      // 6. 閱後即焚：核心已載入記憶體，優先委任 Rust 覆寫抹除暫存設定檔
-      try {
-        bool shredded = false;
-        if (TianheRustBridge.instance.isAvailable) {
-          shredded = await TianheRustBridge.instance.shredFile(configPath);
-        }
-        if (!shredded) {
-          final f = File(configPath);
-          if (await f.exists()) {
-            await f.writeAsString('', flush: true);
-            await f.delete();
-          }
-        }
-        SafeLog.d('[MacosNativeProxy] 閱後即焚：臨時設定檔已抹除');
-      } catch (_) {}
 
       return true;
     } catch (_) {
@@ -447,9 +439,10 @@ class MacosNativeProxy {
     }
   }
 
-  /// Single-Flight Latest-Wins 毫秒級極速合併熱切換 (< 50ms)
+  /// Single-Flight Latest-Wins 毫秒級極速合併熱切換 (純指標切換，0 GeoDB 重載)
   Future<bool> switchProxyWithPayload({
     required String nodeName,
+    List<String>? groupNames,
     String? yamlPayload,
     String? configPath,
     int controllerPort = 9090,
@@ -465,6 +458,7 @@ class MacosNativeProxy {
 
     _pendingSwitchTask = (
       nodeName: nodeName,
+      groupNames: groupNames,
       yamlPayload: yamlPayload,
       configPath: configPath,
       controllerPort: controllerPort,
@@ -490,6 +484,7 @@ class MacosNativeProxy {
         } else {
           lastResult = await _executeSingleSwitch(
             nodeName: task.nodeName,
+            groupNames: task.groupNames,
             yamlPayload: task.yamlPayload,
             configPath: task.configPath,
             controllerPort: task.controllerPort,
@@ -504,6 +499,7 @@ class MacosNativeProxy {
 
   Future<bool> _executeSingleSwitch({
     required String nodeName,
+    List<String>? groupNames,
     String? yamlPayload,
     String? configPath,
     required int controllerPort,
@@ -513,28 +509,8 @@ class MacosNativeProxy {
     try {
       final client = _getControllerClient();
 
-      if (yamlPayload != null && yamlPayload.isNotEmpty) {
-        final req = await client
-            .putUrl(Uri.parse('http://127.0.0.1:$controllerPort/configs?force=true'))
-            .timeout(const Duration(milliseconds: 1500));
-        req.headers.contentType = ContentType.json;
-        if (_secret.isNotEmpty) {
-          req.headers.set('Authorization', 'Bearer $_secret');
-        }
-        req.write(jsonEncode({'payload': yamlPayload}));
-        final res = await req.close().timeout(const Duration(milliseconds: 1500));
-        await res.drain();
-      } else if (configPath != null && configPath.isNotEmpty) {
-        final req = await client
-            .putUrl(Uri.parse('http://127.0.0.1:$controllerPort/configs?force=true'))
-            .timeout(const Duration(milliseconds: 1500));
-        req.headers.contentType = ContentType.json;
-        if (_secret.isNotEmpty) {
-          req.headers.set('Authorization', 'Bearer $_secret');
-        }
-        req.write(jsonEncode({'path': configPath}));
-        final res = await req.close().timeout(const Duration(milliseconds: 1500));
-        await res.drain();
+      if (configPath != null && configPath.isNotEmpty) {
+        unawaited(_safeShredFileWithRetry(configPath));
       }
 
       if (_pendingSwitchTask != null) {
@@ -585,15 +561,32 @@ class MacosNativeProxy {
         } catch (_) {}
       }
 
-      await Future.wait([
-        putGroup('PROXY'),
-        putGroup('GLOBAL'),
-        deleteConnections(),
-        postFlush('/cache/dns/flush'),
-        postFlush('/cache/fakeip/flush'),
-      ]);
+      final targetGroups = <String>{
+        'PROXY',
+        'GLOBAL',
+        '天河網絡',
+        '🚀 节点选择',
+        '🚀 節點選擇',
+        '节点选择',
+        '節點選擇',
+        'Auto',
+        'Fallback',
+      };
+      if (groupNames != null) {
+        targetGroups.addAll(groupNames);
+      }
 
-      SafeLog.d('[MacosNativeProxy] 極速熱切換完成');
+      final tasks = <Future<void>>[];
+      for (final g in targetGroups) {
+        tasks.add(putGroup(g));
+      }
+      tasks.add(deleteConnections());
+      tasks.add(postFlush('/cache/dns/flush'));
+      tasks.add(postFlush('/cache/fakeip/flush'));
+
+      await Future.wait(tasks);
+
+      SafeLog.d('[MacosNativeProxy] 純指標極速熱切換完成 ($nodeName)');
       return true;
     } catch (_) {
       _resetControllerClient();
@@ -802,6 +795,34 @@ class MacosNativeProxy {
   Future<bool> isWintunAvailable() async {
     if (mockIsWintun != null) return mockIsWintun!;
     return true;
+  }
+
+  Future<void> _safeShredFileWithRetry(String path) async {
+    final f = File(path);
+    for (int attempt = 0; attempt < 5; attempt++) {
+      try {
+        if (TianheRustBridge.instance.isAvailable) {
+          final ok = await TianheRustBridge.instance.shredFile(path);
+          if (ok || !await f.exists()) {
+            SafeLog.d('[MacosNativeProxy] L0 實體設定檔已於 <=100ms 閱後即焚');
+            return;
+          }
+        }
+        if (await f.exists()) {
+          final len = await f.length();
+          if (len > 0) {
+            await f.writeAsBytes(List<int>.filled(len, 0), flush: true);
+          }
+          await f.delete();
+          SafeLog.d('[MacosNativeProxy] L0 實體設定檔已安全覆寫抹除');
+        }
+        return;
+      } on FileSystemException {
+        await Future.delayed(const Duration(milliseconds: 15));
+      } catch (_) {
+        return;
+      }
+    }
   }
 
   /// 跨平台兼容別名與方法

@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:yaml/yaml.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/network/dio_client.dart';
@@ -15,7 +16,6 @@ import '../../core/storage/secure_storage_service.dart';
 import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/config/app_config_service.dart';
 import '../../infrastructure/core_daemon/core_daemon.dart';
-import '../../infrastructure/core_daemon/core_state.dart';
 import '../auth/auth_manager.dart';
 import 'config_generator.dart';
 import 'node_model.dart';
@@ -467,17 +467,8 @@ class SubscriptionEngine extends ChangeNotifier {
       }
 
       if (!switchedByRust) {
-        final effectiveNodes = _nodes.isNotEmpty ? _nodes : [node];
-        final yamlPayload = ConfigGenerator.generateYaml(
-          nodes: effectiveNodes,
-          selectedNodeName: node.name,
-          routingMode: _routingMode,
-          singleNodeSlice: true,
-          controllerSecret: _coreDaemon.controllerSecret,
-          templateYaml: _cachedYamlTemplate,
-        );
-
-        await _coreDaemon.switchNode(node.name, yamlPayload: yamlPayload);
+        final groupNames = _extractSelectGroupNamesFromTemplate();
+        await _coreDaemon.switchNode(node.name, groupNames: groupNames);
       }
 
       // 非同步對新節點執行真連通與延遲刷新，絕不阻塞 UI 與熱切換完成回傳
@@ -491,41 +482,8 @@ class SubscriptionEngine extends ChangeNotifier {
     final lower = mode.toLowerCase();
     if (!['rule', 'global', 'direct', 'tun'].contains(lower)) return;
     _routingMode = lower;
-    await _coreDaemon.setProxyMode(ProxyModeRoutingExt.fromRoutingString(lower));
+    await _coreDaemon.setRoutingMode(lower);
     notifyListeners();
-
-    if (_coreDaemon.state.isConnected && _selectedNode != null) {
-      if (!isTestMode &&
-          Platform.environment['FLUTTER_TEST'] != 'true' &&
-          _selectedNode!.rustVaultIndex != null &&
-          TianheRustBridge.instance.isAvailable) {
-        final ok = await TianheRustBridge.instance.selectNodeAndApply(
-          nodeId: _selectedNode!.rustVaultIndex!,
-          routingMode: _routingMode,
-          secret: _coreDaemon.controllerSecret,
-        );
-        if (ok) {
-          _coreDaemon.markNodeSwitched(_selectedNode!.name);
-          return;
-        }
-      }
-
-      if (!kIsWeb && (Platform.isMacOS || Platform.isWindows)) {
-        final effectiveNodes = _nodes.isNotEmpty ? _nodes : [_selectedNode!];
-        final yamlPayload = ConfigGenerator.generateYaml(
-          nodes: effectiveNodes,
-          selectedNodeName: _selectedNode!.name,
-          routingMode: _routingMode,
-          singleNodeSlice: true,
-          controllerSecret: _coreDaemon.controllerSecret,
-          templateYaml: _cachedYamlTemplate,
-        );
-        await _coreDaemon.switchNode(_selectedNode!.name, yamlPayload: yamlPayload);
-      } else {
-        final configPath = await prepareConfigForConnection(autoShred: true);
-        await _coreDaemon.reloadConfig(configPath, selectedNode: _selectedNode!.name);
-      }
-    }
   }
 
   bool _isPinging = false;
@@ -817,8 +775,8 @@ class SubscriptionEngine extends ChangeNotifier {
     return latency;
   }
 
-  /// 為連線準備單節點切片配置檔 (Single-Node Slicing + 閱後即焚 Read-and-Shred)
-  Future<String> prepareConfigForConnection({bool autoShred = true}) async {
+  /// 為連線準備核心配置檔 (支援全節點池啟動 fullPool 與單節點切片 singleNodeSlice + 閱後即焚 Read-and-Shred)
+  Future<String> prepareConfigForConnection({bool autoShred = true, bool? fullPool}) async {
     if (_nodes.isEmpty ||
         _selectedNode == null ||
         isTestMode ||
@@ -826,6 +784,8 @@ class SubscriptionEngine extends ChangeNotifier {
       _activeConfigFilePath = '/mock/config.yaml';
       return _activeConfigFilePath!;
     }
+
+    final useFullPool = fullPool ?? (Platform.environment['FLUTTER_TEST'] != 'true');
 
     try {
       File configFile;
@@ -856,6 +816,7 @@ class SubscriptionEngine extends ChangeNotifier {
           routingMode: _routingMode,
           outputPath: configFile.path,
           secret: _coreDaemon.controllerSecret,
+          fullPool: useFullPool,
         );
       }
 
@@ -864,7 +825,7 @@ class SubscriptionEngine extends ChangeNotifier {
           nodes: _nodes,
           selectedNodeName: _selectedNode!.name,
           routingMode: _routingMode,
-          singleNodeSlice: true,
+          singleNodeSlice: !useFullPool,
           controllerSecret: _coreDaemon.controllerSecret,
           templateYaml: _cachedYamlTemplate,
         );
@@ -1093,15 +1054,8 @@ class SubscriptionEngine extends ChangeNotifier {
         }
 
         if (!switchedByRust) {
-          final yamlPayload = ConfigGenerator.generateYaml(
-            nodes: _nodes,
-            selectedNodeName: targetNode.name,
-            routingMode: _routingMode,
-            singleNodeSlice: true,
-            controllerSecret: _coreDaemon.controllerSecret,
-            templateYaml: _cachedYamlTemplate,
-          );
-          await _coreDaemon.switchNode(targetNode.name, yamlPayload: yamlPayload);
+          final groupNames = _extractSelectGroupNamesFromTemplate();
+          await _coreDaemon.switchNode(targetNode.name, groupNames: groupNames);
         }
       }
     } else {
@@ -1113,6 +1067,30 @@ class SubscriptionEngine extends ChangeNotifier {
       }
       notifyListeners();
     }
+  }
+
+  List<String> _extractSelectGroupNamesFromTemplate() {
+    if (_cachedYamlTemplate == null || _cachedYamlTemplate!.isEmpty) {
+      return const ['PROXY', 'GLOBAL'];
+    }
+    try {
+      final doc = loadYaml(_cachedYamlTemplate!);
+      if (doc is YamlMap && doc['proxy-groups'] is YamlList) {
+        final groups = doc['proxy-groups'] as YamlList;
+        final names = <String>{'PROXY', 'GLOBAL'};
+        for (final g in groups) {
+          if (g is YamlMap) {
+            final name = g['name']?.toString().trim();
+            final type = g['type']?.toString().trim().toLowerCase() ?? 'select';
+            if (name != null && name.isNotEmpty && (type == 'select' || type.isEmpty)) {
+              names.add(name);
+            }
+          }
+        }
+        return names.toList();
+      }
+    } catch (_) {}
+    return const ['PROXY', 'GLOBAL'];
   }
 
   /// 清除記憶體節點、本地加密金庫與磁碟臨時設定檔 (用於登出與 401/403 踢出)

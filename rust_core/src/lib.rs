@@ -207,6 +207,30 @@ pub unsafe extern "C" fn tianhe_prepare_l0_config(
     YamlEngine::prepare_l0_config(node_id, &routing_mode, &output_path, &secret).is_ok()
 }
 
+/// 9b. [YamlEngine] 冷啟動前準備全節點池 L0 設定檔 (專供桌面/行動端單次啟動 + 純指標熱切換)
+#[no_mangle]
+pub unsafe extern "C" fn tianhe_prepare_l0_pool_config(
+    node_id: usize,
+    routing_mode_ptr: *const c_char,
+    output_path_ptr: *const c_char,
+    secret_ptr: *const c_char,
+) -> bool {
+    let routing_mode = from_c_str(routing_mode_ptr).unwrap_or_else(|| "rule".to_string());
+    let output_path = match from_c_str(output_path_ptr) {
+        Some(s) => s,
+        None => return false,
+    };
+    let secret = from_c_str(secret_ptr).unwrap_or_else(VaultCrypto::get_core_secret);
+
+    YamlEngine::prepare_l0_pool_config(node_id, &routing_mode, &output_path, &secret).is_ok()
+}
+
+/// 9c. [YamlEngine] 取得母體範本中所有可供指標熱切換的 select 策略組名稱 JSON 陣列
+#[no_mangle]
+pub extern "C" fn tianhe_get_select_groups() -> *mut c_char {
+    json_ok(YamlEngine::get_select_group_names())
+}
+
 /// 10. [YamlEngine] 閱後即焚安全覆寫並刪除臨時設定檔
 #[no_mangle]
 pub unsafe extern "C" fn tianhe_shred_file(path_ptr: *const c_char) -> bool {

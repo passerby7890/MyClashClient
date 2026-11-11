@@ -39,7 +39,14 @@ void main() {
   });
 
   group('【階段一（第 1 ~ 3 輪）：執行檔徹底更名為 tianhe.exe + 殭屍進程與端口衝突排雷】', () {
-    test('【第 1 輪：CMake 與 Win32 資源表徹底更名 tianhe.exe】', () {
+    test('【第 1 輪：macOS/Win32 執行檔徹底品牌化重命名】', () {
+      final macAppInfo = File('macos/Runner/Configs/AppInfo.xcconfig');
+      if (!Directory('windows').existsSync() && macAppInfo.existsSync()) {
+        final content = macAppInfo.readAsStringSync();
+        expect(content.contains('PRODUCT_NAME = Tianhe'), isTrue);
+        expect(content.contains('com.tianhe.cloud.assistant.macos'), isTrue);
+        return;
+      }
       final cmakeFile = File('windows/CMakeLists.txt');
       expect(cmakeFile.existsSync(), isTrue);
       final cmakeContent = cmakeFile.readAsStringSync();

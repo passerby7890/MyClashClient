@@ -47,9 +47,9 @@ jobs:
         run: |
           python3 ./scripts/macos_cloud_acceptance.py
 
-      - name: "5.3 🛡️ Step A.3: 執行 v3.4.0 Rust C-ABI FFI、版本與隱密性全自動化驗收"
+      - name: "5.3 🛡️ Step A.3: 執行 v3.4.0 Rust C-ABI FFI、純指標秒切與隱密性全自動化驗收"
         run: |
-          flutter test test/rust_bridge_ffi_test.dart test/v310_stealth_and_hotswitch_test.dart test/single_source_version_test.dart test/customer_service_modal_test.dart test/subscription_test.dart
+          flutter test test/rust_bridge_ffi_test.dart test/pointer_hot_switch_and_gomem_test.dart test/v310_stealth_and_hotswitch_test.dart test/single_source_version_test.dart test/customer_service_modal_test.dart test/subscription_test.dart
           python3 -c '
           from pathlib import Path
           targets = [

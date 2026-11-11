@@ -74,8 +74,8 @@ def test_02_dmg_file():
     if not DMG_PATH.exists():
         raise FileNotFoundError(f"DMG 安裝映像檔不存在: {DMG_PATH}")
     dmg_size_mb = os.path.getsize(DMG_PATH) / (1024 * 1024)
-    if dmg_size_mb < 30 or dmg_size_mb > 150:
-        raise ValueError(f"DMG 體積異常: {dmg_size_mb:.2f} MB (預期 30MB~150MB)")
+    if dmg_size_mb < 30 or dmg_size_mb > 180:
+        raise ValueError(f"DMG 體積異常: {dmg_size_mb:.2f} MB (預期 30MB~180MB)")
     return f"DMG 映像檔正常, 體積: {dmg_size_mb:.2f} MB"
 
 def test_03_codesign_check():

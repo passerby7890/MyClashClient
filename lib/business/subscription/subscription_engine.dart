@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/rust/tianhe_rust_bridge.dart';
 import '../../core/storage/secure_storage_service.dart';
 import '../../core/utils/error_sanitizer.dart';
 import '../../infrastructure/config/app_config_service.dart';
@@ -176,12 +177,27 @@ class SubscriptionEngine extends ChangeNotifier {
         return false;
       }
 
-      final parsedNodes = ConfigGenerator.parseProxiesFromYaml(cachedYaml);
-      if (parsedNodes.isEmpty) {
-        return false;
+      List<NodeModel> parsedNodes = [];
+
+      // 雙軌優先路徑：透過 Rust 黑盒金庫解密/解析並僅回傳 UI 零機密描述符
+      if (!isTestMode &&
+          Platform.environment['FLUTTER_TEST'] != 'true' &&
+          TianheRustBridge.instance.init()) {
+        final rustDescriptors = await TianheRustBridge.instance.parseYamlToVault(cachedYaml);
+        if (rustDescriptors != null && rustDescriptors.isNotEmpty) {
+          parsedNodes = rustDescriptors.map(NodeModel.fromRustDescriptor).toList();
+          _cachedYamlTemplate = null; // 零機密：不保留明文 YAML 於 Dart
+        }
       }
 
-      _cachedYamlTemplate = cachedYaml;
+      if (parsedNodes.isEmpty) {
+        parsedNodes = ConfigGenerator.parseProxiesFromYaml(cachedYaml);
+        if (parsedNodes.isEmpty) {
+          return false;
+        }
+        _cachedYamlTemplate = cachedYaml;
+      }
+
       _nodes = parsedNodes;
 
       try {
@@ -284,6 +300,85 @@ class SubscriptionEngine extends ChangeNotifier {
     return list;
   }
 
+  /// 雙軌防洩漏訂閱拉取：優先走 Rust NetRacer + YamlEngine 全程記憶體隔離，失敗時無痛降級 Dart 自癒通道
+  Future<({List<NodeModel> nodes, String? yamlTemplateForBackup})> _fetchSubscriptionSafe({
+    String? customSubscribeUrl,
+    String? token,
+  }) async {
+    final relativePath = await _resolveAndVaultSubscribePath(
+      customSubscribeUrl: customSubscribeUrl,
+      token: token,
+    );
+
+    if (!isTestMode &&
+        Platform.environment['FLUTTER_TEST'] != 'true' &&
+        TianheRustBridge.instance.init()) {
+      final allCandidates = <String>[];
+      void addCandidate(String d) {
+        final t = d.trim();
+        if (t.isNotEmpty && !allCandidates.contains(t)) {
+          allCandidates.add(t);
+        }
+      }
+
+      addCandidate(_configService.currentApiDomain);
+      for (final d in _configService.availableApiDomains) {
+        addCandidate(d);
+      }
+      for (final d in _configService.activeConfig.allApiDomains) {
+        addCandidate(d);
+      }
+      for (final d in AppConstants.fallbackApiDomains) {
+        addCandidate(d);
+      }
+
+      final rustRes = await TianheRustBridge.instance.raceAndVaultSubscription(
+        hosts: allCandidates,
+        relativePath: relativePath,
+      );
+
+      if (rustRes != null && rustRes.nodes.isNotEmpty) {
+        if (rustRes.winnerHost.isNotEmpty) {
+          _configService.setCurrentApiDomain(rustRes.winnerHost);
+        }
+        final safeNodes = rustRes.nodes.map(NodeModel.fromRustDescriptor).toList();
+        return (
+          nodes: safeNodes,
+          yamlTemplateForBackup:
+              rustRes.encryptedBackup.isNotEmpty ? rustRes.encryptedBackup : null,
+        );
+      }
+    }
+
+    // 回退至 Dart 自癒通道
+    final yamlContent = await _fetchSubscriptionWithSelfHealing(
+      customSubscribeUrl: customSubscribeUrl,
+      token: token,
+    );
+    if (yamlContent.isEmpty) {
+      throw const FormatException('訂閱內容為空');
+    }
+
+    if (!isTestMode &&
+        Platform.environment['FLUTTER_TEST'] != 'true' &&
+        TianheRustBridge.instance.isAvailable) {
+      final rustDescriptors = await TianheRustBridge.instance.parseYamlToVault(yamlContent);
+      if (rustDescriptors != null && rustDescriptors.isNotEmpty) {
+        final enc = await TianheRustBridge.instance.encryptConfig(yamlContent);
+        return (
+          nodes: rustDescriptors.map(NodeModel.fromRustDescriptor).toList(),
+          yamlTemplateForBackup: enc != null ? 'RUST_ENC:$enc' : yamlContent,
+        );
+      }
+    }
+
+    final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
+    if (parsedNodes.isEmpty) {
+      throw const FormatException('未能在訂閱資料中解析出有效節點');
+    }
+    return (nodes: parsedNodes, yamlTemplateForBackup: yamlContent);
+  }
+
   /// 靜默拉取並注入訂閱配置 (含 Happy Eyeballs 雙層容災、403 自癒重試與金庫加密落地)
   Future<List<NodeModel>> syncSubscription({
     required String token,
@@ -294,22 +389,20 @@ class SubscriptionEngine extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final yamlContent = await _fetchSubscriptionWithSelfHealing(
+      final res = await _fetchSubscriptionSafe(
         customSubscribeUrl: customSubscribeUrl,
         token: token,
       );
 
-      final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
-      if (parsedNodes.isEmpty) {
-        throw const FormatException('未能在訂閱資料中解析出有效節點');
+      final isRustBacked = res.nodes.isNotEmpty && res.nodes.first.rustVaultIndex != null;
+      _cachedYamlTemplate = isRustBacked ? null : res.yamlTemplateForBackup;
+      _nodes = res.nodes;
+
+      if (res.yamlTemplateForBackup != null && res.yamlTemplateForBackup!.isNotEmpty) {
+        try {
+          await _storageService.saveEncryptedNodes(res.yamlTemplateForBackup!);
+        } catch (_) {}
       }
-
-      _cachedYamlTemplate = yamlContent;
-      _nodes = parsedNodes;
-
-      try {
-        await _storageService.saveEncryptedNodes(yamlContent);
-      } catch (_) {}
 
       try {
         _favoriteNodeIds = await _storageService.getFavoriteNodeIds();
@@ -356,19 +449,36 @@ class SubscriptionEngine extends ChangeNotifier {
     } catch (_) {}
     notifyListeners();
 
-    // 1. 若核心正在運行，進行毫秒級極速熱切換（Fast AST Cache + Single-Flight Coalescer）
+    // 1. 若核心正在運行，進行毫秒級極速熱切換 (優先透過 Rust 金庫直推 9090 端口，零 Dart 明文經手)
     if (_coreDaemon.state.isConnected) {
-      final effectiveNodes = _nodes.isNotEmpty ? _nodes : [node];
-      final yamlPayload = ConfigGenerator.generateYaml(
-        nodes: effectiveNodes,
-        selectedNodeName: node.name,
-        routingMode: _routingMode,
-        singleNodeSlice: true,
-        controllerSecret: _coreDaemon.controllerSecret,
-        templateYaml: _cachedYamlTemplate,
-      );
+      bool switchedByRust = false;
+      if (!isTestMode &&
+          Platform.environment['FLUTTER_TEST'] != 'true' &&
+          node.rustVaultIndex != null &&
+          TianheRustBridge.instance.isAvailable) {
+        switchedByRust = await TianheRustBridge.instance.selectNodeAndApply(
+          nodeId: node.rustVaultIndex!,
+          routingMode: _routingMode,
+          secret: _coreDaemon.controllerSecret,
+        );
+        if (switchedByRust) {
+          _coreDaemon.markNodeSwitched(node.name);
+        }
+      }
 
-      await _coreDaemon.switchNode(node.name, yamlPayload: yamlPayload);
+      if (!switchedByRust) {
+        final effectiveNodes = _nodes.isNotEmpty ? _nodes : [node];
+        final yamlPayload = ConfigGenerator.generateYaml(
+          nodes: effectiveNodes,
+          selectedNodeName: node.name,
+          routingMode: _routingMode,
+          singleNodeSlice: true,
+          controllerSecret: _coreDaemon.controllerSecret,
+          templateYaml: _cachedYamlTemplate,
+        );
+
+        await _coreDaemon.switchNode(node.name, yamlPayload: yamlPayload);
+      }
 
       // 非同步對新節點執行真連通與延遲刷新，絕不阻塞 UI 與熱切換完成回傳
       unawaited(pingSelectedNode().catchError((_) => -1));
@@ -385,6 +495,21 @@ class SubscriptionEngine extends ChangeNotifier {
     notifyListeners();
 
     if (_coreDaemon.state.isConnected && _selectedNode != null) {
+      if (!isTestMode &&
+          Platform.environment['FLUTTER_TEST'] != 'true' &&
+          _selectedNode!.rustVaultIndex != null &&
+          TianheRustBridge.instance.isAvailable) {
+        final ok = await TianheRustBridge.instance.selectNodeAndApply(
+          nodeId: _selectedNode!.rustVaultIndex!,
+          routingMode: _routingMode,
+          secret: _coreDaemon.controllerSecret,
+        );
+        if (ok) {
+          _coreDaemon.markNodeSwitched(_selectedNode!.name);
+          return;
+        }
+      }
+
       if (!kIsWeb && (Platform.isMacOS || Platform.isWindows)) {
         final effectiveNodes = _nodes.isNotEmpty ? _nodes : [_selectedNode!];
         final yamlPayload = ConfigGenerator.generateYaml(
@@ -411,6 +536,7 @@ class SubscriptionEngine extends ChangeNotifier {
   void cancelPing() {
     if (_isPinging) {
       _cancelPingRequested = true;
+      TianheRustBridge.instance.cancelPing();
       _isPinging = false;
       notifyListeners();
     }
@@ -602,6 +728,25 @@ class SubscriptionEngine extends ChangeNotifier {
     }
 
     try {
+      // 雙軌優先路徑：若節點鎖在 Rust 金庫中，委任 Tokio 50 路微秒級併發測速 (UI 零機密 + 120Hz 滿幀)
+      if (!useTestMode &&
+          Platform.environment['FLUTTER_TEST'] != 'true' &&
+          _nodes.any((n) => n.rustVaultIndex != null) &&
+          TianheRustBridge.instance.isAvailable) {
+        final rustResults = await TianheRustBridge.instance.batchPingVaultNodes(timeoutMs: timeoutMs);
+        if (rustResults != null && !_cancelPingRequested) {
+          final latByIdx = {for (final r in rustResults) r.id: r.latency};
+          for (int i = 0; i < _nodes.length; i++) {
+            final rIdx = _nodes[i].rustVaultIndex;
+            if (rIdx != null && latByIdx.containsKey(rIdx)) {
+              _nodes[i] = _nodes[i].copyWithLatency(latByIdx[rIdx]!);
+            }
+          }
+          notifyListeners();
+          return;
+        }
+      }
+
       for (int i = 0; i < _nodes.length; i += poolSize) {
         if (_cancelPingRequested) {
           SafeLog.d('[SubscriptionEngine] 批量測速已由使用者中止');
@@ -703,16 +848,29 @@ class SubscriptionEngine extends ChangeNotifier {
         configFile = File('${dir.path}/config.yaml');
       }
 
-      final yamlText = ConfigGenerator.generateYaml(
-        nodes: _nodes,
-        selectedNodeName: _selectedNode!.name,
-        routingMode: _routingMode,
-        singleNodeSlice: true,
-        controllerSecret: _coreDaemon.controllerSecret,
-        templateYaml: _cachedYamlTemplate,
-      );
+      bool generatedByRust = false;
+      if (_selectedNode!.rustVaultIndex != null &&
+          TianheRustBridge.instance.isAvailable) {
+        generatedByRust = await TianheRustBridge.instance.prepareL0Config(
+          nodeId: _selectedNode!.rustVaultIndex!,
+          routingMode: _routingMode,
+          outputPath: configFile.path,
+          secret: _coreDaemon.controllerSecret,
+        );
+      }
 
-      await configFile.writeAsString(yamlText, flush: true);
+      if (!generatedByRust) {
+        final yamlText = ConfigGenerator.generateYaml(
+          nodes: _nodes,
+          selectedNodeName: _selectedNode!.name,
+          routingMode: _routingMode,
+          singleNodeSlice: true,
+          controllerSecret: _coreDaemon.controllerSecret,
+          templateYaml: _cachedYamlTemplate,
+        );
+
+        await configFile.writeAsString(yamlText, flush: true);
+      }
       _activeConfigFilePath = configFile.path;
 
       // 桌面版由原生核心就緒後立即執行 Read-and-Shred；非桌面版延遲抹除
@@ -729,8 +887,12 @@ class SubscriptionEngine extends ChangeNotifier {
     }
   }
 
-  /// 閱後即焚：以空字串覆寫並徹底刪除實體檔案
+  /// 閱後即焚：優先交由 Rust 底層以零字節覆寫並徹底刪除實體檔案
   static Future<void> shredFile(File file) async {
+    if (TianheRustBridge.instance.isAvailable) {
+      final ok = await TianheRustBridge.instance.shredFile(file.path);
+      if (ok) return;
+    }
     try {
       if (await file.exists()) {
         await file.writeAsString('', flush: true);
@@ -798,26 +960,21 @@ class SubscriptionEngine extends ChangeNotifier {
         );
       }
 
-      final yamlContent = await _fetchSubscriptionWithSelfHealing(
+      final res = await _fetchSubscriptionSafe(
         customSubscribeUrl: _authManager?.state.user?.subscribeUrl,
         token: token,
       );
-      if (yamlContent.isEmpty) {
-        throw const FormatException('訂閱內容為空');
+
+      final isRustBacked = res.nodes.isNotEmpty && res.nodes.first.rustVaultIndex != null;
+      _cachedYamlTemplate = isRustBacked ? null : res.yamlTemplateForBackup;
+
+      if (res.yamlTemplateForBackup != null && res.yamlTemplateForBackup!.isNotEmpty) {
+        try {
+          await _storageService.saveEncryptedNodes(res.yamlTemplateForBackup!);
+        } catch (_) {}
       }
 
-      final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
-      if (parsedNodes.isEmpty) {
-        throw const FormatException('未能在訂閱資料中解析出有效節點');
-      }
-
-      _cachedYamlTemplate = yamlContent;
-
-      try {
-        await _storageService.saveEncryptedNodes(yamlContent);
-      } catch (_) {}
-
-      await _applyNewNodesWithDiffCheck(parsedNodes, isAutoSync: false);
+      await _applyNewNodesWithDiffCheck(res.nodes, isAutoSync: false);
 
       _lastSyncTime = DateTime.now();
       return _nodes;
@@ -851,24 +1008,24 @@ class SubscriptionEngine extends ChangeNotifier {
         return;
       }
 
-      final yamlContent = await _fetchSubscriptionWithSelfHealing(
+      final res = await _fetchSubscriptionSafe(
         customSubscribeUrl: _authManager?.state.user?.subscribeUrl,
         token: token,
       );
-      if (yamlContent.isNotEmpty) {
-        final parsedNodes = ConfigGenerator.parseProxiesFromYaml(yamlContent);
-        if (parsedNodes.isNotEmpty) {
-          _cachedYamlTemplate = yamlContent;
+      if (res.nodes.isNotEmpty) {
+        final isRustBacked = res.nodes.first.rustVaultIndex != null;
+        _cachedYamlTemplate = isRustBacked ? null : res.yamlTemplateForBackup;
 
+        if (res.yamlTemplateForBackup != null && res.yamlTemplateForBackup!.isNotEmpty) {
           try {
-            await _storageService.saveEncryptedNodes(yamlContent);
+            await _storageService.saveEncryptedNodes(res.yamlTemplateForBackup!);
           } catch (_) {}
-
-          await _applyNewNodesWithDiffCheck(parsedNodes, isAutoSync: true);
-
-          _lastSyncTime = DateTime.now();
-          SafeLog.d('[SubscriptionEngine] 背景自動靜默更新完成 (${parsedNodes.length} 顆節點)');
         }
+
+        await _applyNewNodesWithDiffCheck(res.nodes, isAutoSync: true);
+
+        _lastSyncTime = DateTime.now();
+        SafeLog.d('[SubscriptionEngine] 背景自動靜默更新完成 (${res.nodes.length} 顆節點)');
       }
     } catch (_) {
       SafeLog.d('[SubscriptionEngine] 背景自動靜默更新略過 ($reason)');
@@ -920,15 +1077,32 @@ class SubscriptionEngine extends ChangeNotifier {
         _nodes = updatedNodes;
         notifyListeners();
 
-        final yamlPayload = ConfigGenerator.generateYaml(
-          nodes: _nodes,
-          selectedNodeName: targetNode.name,
-          routingMode: _routingMode,
-          singleNodeSlice: true,
-          controllerSecret: _coreDaemon.controllerSecret,
-          templateYaml: _cachedYamlTemplate,
-        );
-        await _coreDaemon.switchNode(targetNode.name, yamlPayload: yamlPayload);
+        bool switchedByRust = false;
+        if (!isTestMode &&
+            Platform.environment['FLUTTER_TEST'] != 'true' &&
+            targetNode.rustVaultIndex != null &&
+            TianheRustBridge.instance.isAvailable) {
+          switchedByRust = await TianheRustBridge.instance.selectNodeAndApply(
+            nodeId: targetNode.rustVaultIndex!,
+            routingMode: _routingMode,
+            secret: _coreDaemon.controllerSecret,
+          );
+          if (switchedByRust) {
+            _coreDaemon.markNodeSwitched(targetNode.name);
+          }
+        }
+
+        if (!switchedByRust) {
+          final yamlPayload = ConfigGenerator.generateYaml(
+            nodes: _nodes,
+            selectedNodeName: targetNode.name,
+            routingMode: _routingMode,
+            singleNodeSlice: true,
+            controllerSecret: _coreDaemon.controllerSecret,
+            templateYaml: _cachedYamlTemplate,
+          );
+          await _coreDaemon.switchNode(targetNode.name, yamlPayload: yamlPayload);
+        }
       }
     } else {
       _nodes = updatedNodes;

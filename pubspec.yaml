@@ -2,7 +2,7 @@ name: flclash_v2board_client
 description: Tianhe Network Desktop Client with Multi-tier Encrypted Routing and Auto Updater.
 publish_to: 'none'
 
-version: 3.3.1+131
+version: 3.4.0+140
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -11,6 +11,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  ffi: ^2.1.0
 
   # 基礎網路與安全通訊
   http: ^1.2.0

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/rust/tianhe_rust_bridge.dart';
 import '../../core/utils/error_sanitizer.dart';
 import 'traffic_stats.dart';
 
@@ -354,14 +355,20 @@ class MacosNativeProxy {
       // 5. 開啟 macOS 系統代理
       await enableSystemProxy(host: '127.0.0.1', port: mixedPort);
 
-      // 6. 閱後即焚：核心已載入記憶體，立即覆寫抹除暫存設定檔
+      // 6. 閱後即焚：核心已載入記憶體，優先委任 Rust 覆寫抹除暫存設定檔
       try {
-        final f = File(configPath);
-        if (await f.exists()) {
-          await f.writeAsString('', flush: true);
-          await f.delete();
-          SafeLog.d('[MacosNativeProxy] 閱後即焚：臨時設定檔已抹除');
+        bool shredded = false;
+        if (TianheRustBridge.instance.isAvailable) {
+          shredded = await TianheRustBridge.instance.shredFile(configPath);
         }
+        if (!shredded) {
+          final f = File(configPath);
+          if (await f.exists()) {
+            await f.writeAsString('', flush: true);
+            await f.delete();
+          }
+        }
+        SafeLog.d('[MacosNativeProxy] 閱後即焚：臨時設定檔已抹除');
       } catch (_) {}
 
       return true;

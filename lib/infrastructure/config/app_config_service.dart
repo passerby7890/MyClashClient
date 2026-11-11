@@ -7,6 +7,7 @@ import 'package:http/io_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/crypto/aes_decryptor.dart';
+import '../../core/rust/tianhe_rust_bridge.dart';
 import '../../core/utils/error_sanitizer.dart';
 import 'doh_resolver.dart';
 import 'remote_config_model.dart';
@@ -16,6 +17,7 @@ import 'remote_config_model.dart';
 class AppConfigService {
   final DohResolver _dohResolver;
   final AesDecryptor _aesDecryptor;
+  final bool _hasCustomDependencies;
   SharedPreferences? _prefs;
 
   RemoteConfigModel? _activeConfig;
@@ -27,7 +29,8 @@ class AppConfigService {
     DohResolver? dohResolver,
     AesDecryptor? aesDecryptor,
     SharedPreferences? prefs,
-  })  : _dohResolver = dohResolver ?? DohResolver(),
+  })  : _hasCustomDependencies = dohResolver != null || aesDecryptor != null,
+        _dohResolver = dohResolver ?? DohResolver(),
         _aesDecryptor = aesDecryptor ?? AesDecryptor(),
         _prefs = prefs;
 
@@ -167,6 +170,26 @@ class AppConfigService {
   Future<RemoteConfigModel> initialize() async {
     _prefs ??= await SharedPreferences.getInstance();
     _loadFromCache();
+
+    if (!_hasCustomDependencies &&
+        !kIsWeb &&
+        Platform.environment['FLUTTER_TEST'] != 'true' &&
+        TianheRustBridge.instance.init()) {
+      try {
+        final rustMap = await TianheRustBridge.instance.resolveRemoteConfig();
+        if (rustMap != null) {
+          final rustConfig = RemoteConfigModel.fromJson(rustMap);
+          _activeConfig = rustConfig;
+          await _saveToCache(rustConfig);
+          try {
+            await raceApiHosts();
+          } catch (_) {}
+          return rustConfig;
+        }
+      } catch (_) {
+        SafeLog.d('[AppConfigService] Rust 配置競速略過，平滑切換至 Dart 回退軌道');
+      }
+    }
 
     // 1. 同時並行發起雲端配置與加密 TXT 查詢，哪個快就先代入哪個
     try {

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../business/auth/auth_manager.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/network/dio_client.dart';
 import '../../core/theme/app_theme.dart';
@@ -225,7 +226,7 @@ class _InviteScreenState extends State<InviteScreen> {
       }
       return '$rawInvite$code';
     }
-    return 'https://0n21.com/#/register?code=$code';
+    return '${AppConstants.officialWebsiteUrl}/#/register?code=$code';
   }
 
   String _formatTimestamp(int timestamp) {

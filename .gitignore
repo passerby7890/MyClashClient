@@ -51,5 +51,7 @@ app.*.map.json
 dist_mac/
 tools/mihomo/mihomo
 tools/mihomo/cache.db
+rust_core/target/
+*.dylib
 test/failures/
 *.png

@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
-# 天河網絡 (Tianhe Network) - macOS 輕巧瘦身編譯與 DMG 封裝腳本 (v3.3.1)
-# 支援架構：Apple Silicon (arm64) & Intel (x86_64) 通用 Universal
+# 天河網絡 (Tianhe Network) - macOS 輕巧瘦身編譯與 DMG 封裝腳本 (v3.4.0)
+# 支援架構：Apple Silicon (arm64) & Intel (x86_64) 通用 Universal + Rust 原生安全引擎
 # 核心規範：Apple TN2206 安全標準 + 符號連結 (Symlink) 零冗餘輕巧化
 # ==============================================================================
 
@@ -16,8 +16,8 @@ APP_BUNDLE="$BUILD_OUTPUT/$APP_NAME.app"
 
 APP_VER=$(grep 'version:' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | awk '{print $2}' | cut -d'+' -f1)
 APP_BUILD=$(grep 'version:' "$PROJECT_ROOT/pubspec.yaml" | head -n 1 | awk '{print $2}' | cut -d'+' -f2)
-if [ -z "$APP_VER" ]; then APP_VER="3.3.1"; fi
-if [ -z "$APP_BUILD" ]; then APP_BUILD="131"; fi
+if [ -z "$APP_VER" ]; then APP_VER="3.4.0"; fi
+if [ -z "$APP_BUILD" ]; then APP_BUILD="140"; fi
 
 DMG_NAME="TianheNetwork_v${APP_VER}_macOS.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
@@ -65,6 +65,22 @@ if [ ! -f "$MIHOMO_DIR/Country.mmdb" ]; then
     curl -L -s "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb" -o "$MIHOMO_DIR/Country.mmdb"
 fi
 
+# 2.5 編譯 macOS Universal Rust 原生安全與高速引擎 (libtianhe_rust.dylib)
+RUST_DIR="$PROJECT_ROOT/rust_core"
+RUST_UNIVERSAL_DYLIB="$RUST_DIR/target/release/libtianhe_rust.dylib"
+echo "🦀 正在編譯 Universal macOS Rust 原生安全引擎 (arm64 + x86_64)..."
+cd "$RUST_DIR"
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+cargo test
+cargo build --release --target aarch64-apple-darwin
+cargo build --release --target x86_64-apple-darwin
+mkdir -p "$RUST_DIR/target/release"
+lipo -create \
+    "$RUST_DIR/target/aarch64-apple-darwin/release/libtianhe_rust.dylib" \
+    "$RUST_DIR/target/x86_64-apple-darwin/release/libtianhe_rust.dylib" \
+    -output "$RUST_UNIVERSAL_DYLIB"
+echo "✅ Universal libtianhe_rust.dylib 合併完成: $(lipo -info "$RUST_UNIVERSAL_DYLIB")"
+
 # 3. 執行 Flutter Release 編譯與代碼混淆
 cd "$PROJECT_ROOT"
 echo "📦 正在拉取 Flutter 依賴..."
@@ -83,10 +99,15 @@ if [ ! -d "$APP_BUNDLE" ]; then
     exit 1
 fi
 
-# 4. 嵌入 tianhe_engine 內核至 Contents/MacOS (Apple TN2206 標準) 與離線資料庫至 Resources
-echo "📂 正在將內核封裝進 $APP_NAME.app (Apple TN2206 架構)..."
+# 4. 嵌入 tianhe_engine 內核至 Contents/MacOS、libtianhe_rust.dylib 至 Frameworks 與離線資料庫至 Resources
+echo "📂 正在將內核與 Rust 引擎封裝進 $APP_NAME.app (Apple TN2206 架構)..."
 cp -f "$MIHOMO_BIN" "$APP_BUNDLE/Contents/MacOS/tianhe_engine"
 chmod +x "$APP_BUNDLE/Contents/MacOS/tianhe_engine"
+
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+cp -f "$RUST_UNIVERSAL_DYLIB" "$APP_BUNDLE/Contents/Frameworks/libtianhe_rust.dylib"
+install_name_tool -id "@rpath/libtianhe_rust.dylib" "$APP_BUNDLE/Contents/Frameworks/libtianhe_rust.dylib" 2>/dev/null || true
+chmod +x "$APP_BUNDLE/Contents/Frameworks/libtianhe_rust.dylib"
 
 APP_RES_DIR="$APP_BUNDLE/Contents/Resources"
 mkdir -p "$APP_RES_DIR"
@@ -115,6 +136,7 @@ rm -f "$APP_BUNDLE/Contents/Frameworks/App.framework/Resources/kernel_blob.bin" 
 
 # 6. Ad-hoc 本地簽名 (確保 Gatekeeper 與 macOS 13/14/15 順暢執行)
 echo "🔏 正在執行 Ad-hoc 本機程式碼簽名..."
+codesign --force --sign - "$APP_BUNDLE/Contents/Frameworks/libtianhe_rust.dylib" 2>/dev/null || true
 codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/tianhe_engine" 2>/dev/null || true
 codesign --force --deep --sign - "$APP_BUNDLE"
 

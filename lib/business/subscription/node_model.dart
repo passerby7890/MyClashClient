@@ -11,6 +11,7 @@ class NodeModel {
   final String protocol; // vmess / vless / trojan / ss
   final int? latencyMs; // 毫秒 (-1 代表逾時)
   final bool isFavorite; // 是否加入收藏
+  final int? rustVaultIndex; // 若由 Rust 引擎鎖入靜態金庫，僅持有索引號 (UI 零機密)
   
   // 私有底層真實節點參數 (僅於生成 Mihomo 配置時在記憶體中調用，絕不向外部暴露)
   final Map<String, dynamic> _rawConfig;
@@ -22,6 +23,7 @@ class NodeModel {
     required this.protocol,
     this.latencyMs,
     this.isFavorite = false,
+    this.rustVaultIndex,
     required Map<String, dynamic> rawConfig,
   }) : _rawConfig = rawConfig;
 
@@ -291,6 +293,7 @@ class NodeModel {
       protocol: protocol,
       latencyMs: pingMs,
       isFavorite: isFavorite,
+      rustVaultIndex: rustVaultIndex,
       rawConfig: _rawConfig,
     );
   }
@@ -303,6 +306,7 @@ class NodeModel {
       protocol: protocol,
       latencyMs: latencyMs,
       isFavorite: fav,
+      rustVaultIndex: rustVaultIndex,
       rawConfig: _rawConfig,
     );
   }
@@ -406,6 +410,26 @@ class NodeModel {
       protocol: type.toUpperCase(),
       latencyMs: null,
       rawConfig: map,
+    );
+  }
+
+  /// 從 Rust 安全金庫回傳之 SafeNodeDescriptor 建立 UI 專用節點模型 (100% 零機密)
+  factory NodeModel.fromRustDescriptor(Map<String, dynamic> desc) {
+    final idx = (desc['id'] as num?)?.toInt() ?? 0;
+    final name = desc['name']?.toString() ?? 'Node';
+    final proto = desc['protocol']?.toString() ?? 'PROXY';
+    final country = desc['country_code']?.toString() ?? '';
+    final flag = (country.length == 2 && country != 'UN')
+        ? isoCodeToEmoji(country)
+        : extractFlag(name);
+    return NodeModel(
+      id: name,
+      name: name,
+      flagEmoji: flag,
+      protocol: proto.toUpperCase(),
+      latencyMs: null,
+      rustVaultIndex: idx,
+      rawConfig: const <String, dynamic>{},
     );
   }
 

@@ -1,0 +1,48 @@
+[package]
+name = "tianhe_core_rs"
+version = "3.4.0"
+edition = "2021"
+authors = ["Tianhe Network Dev Team"]
+description = "High-performance security and networking native engine for Tianhe Network client"
+
+[lib]
+name = "tianhe_rust"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Async Runtime & Networking
+tokio = { version = "1.38", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+futures = "0.3"
+
+# Serialization & YAML
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Cryptography & Obfuscation
+aes = "0.8"
+cbc = "0.1"
+base64 = "0.22"
+obfstr = "0.4"
+zeroize = { version = "1.8", features = ["derive"] }
+
+# Utilities
+lazy_static = "1.4"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_Networking_WinInet",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

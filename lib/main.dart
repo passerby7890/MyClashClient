@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'core/i18n/i18n_service.dart';
 import 'core/network/auth_interceptor.dart';
 import 'core/network/dio_client.dart';
+import 'core/rust/tianhe_rust_bridge.dart';
 import 'core/storage/secure_storage_service.dart';
 import 'core/theme/app_theme.dart';
 import 'infrastructure/config/app_config_service.dart';
@@ -15,6 +16,9 @@ import 'presentation/splash/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化 Rust 原生安全與高速引擎 (libtianhe_rust.dylib)
+  TianheRustBridge.instance.init();
 
   // Release 模式下強制靜默日誌，確保零敏感資訊洩漏至系統日誌
   if (kReleaseMode) {

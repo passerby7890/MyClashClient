@@ -26,9 +26,16 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: "3. 檢查 Flutter 與 macOS 構建工具鏈"
+      - name: "2.5 🦀 設定 Rust 工具鏈 (Universal arm64 + x86_64)"
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: "3. 檢查 Flutter、Rust 與 macOS 構建工具鏈"
         run: |
           flutter --version
+          rustc --version
+          cargo --version
           flutter doctor -v
 
       - name: "4. 執行一鍵瘦身編譯與 DMG 封裝腳本"
@@ -40,9 +47,29 @@ jobs:
         run: |
           python3 ./scripts/macos_cloud_acceptance.py
 
-      - name: "5.3 🛡️ Step A.3: 執行 v3.1.0 (Build 111) 零洩漏隱密性與節點熱切換全自動化驗收測試"
+      - name: "5.3 🛡️ Step A.3: 執行 v3.4.0 Rust C-ABI FFI、版本與隱密性全自動化驗收"
         run: |
-          flutter test test/v310_stealth_and_hotswitch_test.dart
+          flutter test test/rust_bridge_ffi_test.dart test/v310_stealth_and_hotswitch_test.dart test/single_source_version_test.dart test/customer_service_modal_test.dart test/subscription_test.dart
+          python3 -c '
+          from pathlib import Path
+          targets = [
+              Path("dist_mac/Tianhe.app/Contents/Frameworks/libtianhe_rust.dylib"),
+              Path("dist_mac/Tianhe.app/Contents/Frameworks/App.framework/App"),
+          ]
+          terms = [
+              "5xfWh" + "68", "s303K" + "hc0", "thjsq" + "999", "thjsq" + "aes32",
+              "nova" + "clash", "cloudflare" + "-dns", "8." + "218", "8." + "219",
+              "0n" + "21", "Clash" + "Meta", "tianhe" + "_sec"
+          ]
+          leaks = 0
+          for p in targets:
+              assert p.exists(), f"Missing binary: {p}"
+              txt = p.read_bytes().decode("ascii", errors="ignore").lower()
+              hits = [t for t in terms if t.lower() in txt]
+              print(f"[SCAN] {p}: {len(hits)} leaks {hits}")
+              leaks += len(hits)
+          assert leaks == 0, f"Found {leaks} binary leaks!"
+          '
 
       - name: "5.5 🔥 Step A.5: 執行 macOS 雲端實機連續 1 小時（60 分鐘）極限烤機驗收"
         run: |
@@ -162,7 +189,7 @@ jobs:
       - name: "9. 💿 上傳 macOS DMG 建構產物"
         uses: actions/upload-artifact@v4
         with:
-          name: TianheNetwork_v3.3.1_macOS
+          name: TianheNetwork_v3.4.0_macOS
           path: dist_mac/*.dmg
           if-no-files-found: error
 

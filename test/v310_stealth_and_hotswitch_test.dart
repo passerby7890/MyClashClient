@@ -7,12 +7,12 @@ import 'package:flclash_v2board_client/core/utils/error_sanitizer.dart';
 import 'package:flclash_v2board_client/business/subscription/node_model.dart';
 
 void main() {
-  group('🛡️ 天河網絡 v3.1.0 (Build 111) 零洩漏隱密性與節點熱切換全自動化驗收測試', () {
-    test('1. 版本號與 Build Number 單一事實來源對齊 3.3.1+131', () {
-      expect(AppConstants.appVersion, equals('3.3.1'));
-      expect(AppConstants.appBuildNumber, equals(131));
-      expect(AppConstants.fullVersionDisplay, equals('v3.3.1 (Build 131)'));
-      expect(AppConstants.versionTag, equals('v3.3.1'));
+  group('🛡️ 天河網絡 v3.4.0 (Build 140) 零洩漏隱密性與節點熱切換全自動化驗收測試', () {
+    test('1. 版本號與 Build Number 單一事實來源對齊 3.4.0+140', () {
+      expect(AppConstants.appVersion, equals('3.4.0'));
+      expect(AppConstants.appBuildNumber, equals(140));
+      expect(AppConstants.fullVersionDisplay, equals('v3.4.0 (Build 140)'));
+      expect(AppConstants.versionTag, equals('v3.4.0'));
     });
 
     test('2. 常數層 0x5A XOR 混淆解密驗證 (Crisp, DoH, Host 零明文硬編碼)', () {

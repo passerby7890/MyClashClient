@@ -247,6 +247,12 @@ class CoreDaemon extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Rust 底層直接切換核心節點後，同步更新 Dart UI 核心狀態標籤
+  void markNodeSwitched(String nodeName) {
+    if (!_state.isConnected) return;
+    _setState(CoreState.connected(nodeName: nodeName));
+  }
+
   /// 重新載入設定檔
   Future<void> reloadConfig(String configPath, {String? selectedNode}) async {
     if (!_state.isConnected) return;

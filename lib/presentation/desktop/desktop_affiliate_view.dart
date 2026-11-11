@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../business/auth/auth_manager.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/i18n/i18n_service.dart';
 import '../../core/network/dio_client.dart';
 import '../../infrastructure/config/app_config_service.dart';
@@ -167,7 +168,7 @@ class _DesktopAffiliateViewState extends State<DesktopAffiliateView> {
       final base = rawInvite.endsWith('/') ? rawInvite.substring(0, rawInvite.length - 1) : rawInvite;
       return '$base/#/register?code=$code';
     }
-    return 'https://0n21.com/#/register?code=$code';
+    return '${AppConstants.officialWebsiteUrl}/#/register?code=$code';
   }
 
   @override
